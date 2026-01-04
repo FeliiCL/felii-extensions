@@ -1,25 +1,22 @@
 {
-  "buildTime": "2024-01-04T00:00:00Z",
+  "buildTime": "2026-01-04T00:00:00Z",
   "sources": [
     {
       "id": "ManhwaWeb",
       "name": "ManhwaWeb",
-      "author": "TuNombre",
+      "author": "Felii",
       "desc": "Lectura directa desde ManhwaWeb con API rápida",
-      "website": "https://manhwaweb.com",
+      "website": "http://github.com/feliicl",
+      "contentRating": "MATURE",
       "version": "1.0.0",
-      "tags": [
-        {
-          "text": "Español",
-          "type": "blue"
-        },
-        {
-          "text": "+18",
-          "type": "red"
-        }
-      ],
       "icon": "icon.png",
-      "websiteBaseURL": "https://manhwaweb.com"
+      "tags": [],
+      "websiteBaseURL": "https://manhwaweb.com",
+      "intents": 21
     }
-  ]
+  ],
+  "builtWith": {
+    "toolchain": "0.8.11",
+    "types": "0.8.11"
+  }
 }
