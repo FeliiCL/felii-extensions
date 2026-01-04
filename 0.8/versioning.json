@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-01-04T05:00:00Z",
+  "buildTime": "2026-01-04T14:00:00Z",
   "sources": [
     {
       "id": "ManhwaWeb",
@@ -8,7 +8,7 @@
       "desc": "Lectura directa desde ManhwaWeb con API rápida",
       "website": "http://github.com/feliicl",
       "contentRating": "MATURE",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "icon": "icon.png",
       "tags": [],
       "websiteBaseURL": "https://manhwaweb.com",
