@@ -526,13 +526,13 @@ class ManhwaWeb extends types_1.Source {
         if (data._categoris && Array.isArray(data._categoris)) {
             data._categoris.forEach((cat) => {
                 const key = Object.keys(cat)[0];
-                tags.push(createTag({ id: key, label: cat[key], type: types_1.TagType.BLUE }));
+                tags.push(createTag({ id: key, label: cat[key], type: 'blue' }));
             });
         }
         if (data._demografi)
-            tags.push(createTag({ id: data._demografi, label: data._demografi.toUpperCase(), type: types_1.TagType.GREEN }));
+            tags.push(createTag({ id: data._demografi, label: data._demografi.toUpperCase(), type: 'green' }));
         if (data._tipo)
-            tags.push(createTag({ id: data._tipo, label: data._tipo.toUpperCase(), type: types_1.TagType.YELLOW }));
+            tags.push(createTag({ id: data._tipo, label: data._tipo.toUpperCase(), type: 'yellow' }));
         const tagSections = [createTagSection({ id: '0', label: 'Géneros', tags })];
         return createManga({
             id: mangaId,
