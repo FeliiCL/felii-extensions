@@ -513,12 +513,12 @@ class ManhwaWeb extends types_1.Source {
         const title = data.the_real_name || data.name_esp || data._name || "Sin título";
         const image = data._imagen || "https://placehold.co/400x600?text=No+Cover";
         const desc = data._sinopsis || "Sin descripción disponible.";
-        let status = types_1.MangaStatus.ONGOING;
+        let status = 0; // ONGOING
         const statusText = (data._status || "").toLowerCase();
         if (statusText.includes("finalizado"))
-            status = types_1.MangaStatus.COMPLETED;
+            status = 1; // COMPLETED
         else if (statusText.includes("pausado"))
-            status = types_1.MangaStatus.HIATUS;
+            status = 2; // HIATUS
         // Author from extras
         const author = data._extras?.autores?.join(', ') || "Desconocido";
         // Tags/Genres
