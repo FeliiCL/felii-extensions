@@ -1,0 +1,25 @@
+{
+  "buildTime": "2024-01-04T00:00:00Z",
+  "sources": [
+    {
+      "id": "ManhwaWeb",
+      "name": "ManhwaWeb",
+      "author": "TuNombre",
+      "desc": "Lectura directa desde ManhwaWeb con API rápida",
+      "website": "https://manhwaweb.com",
+      "version": "1.0.0",
+      "tags": [
+        {
+          "text": "Español",
+          "type": "blue"
+        },
+        {
+          "text": "+18",
+          "type": "red"
+        }
+      ],
+      "icon": "icon.png",
+      "websiteBaseURL": "https://manhwaweb.com"
+    }
+  ]
+}
