@@ -462,7 +462,7 @@ __exportStar(require("./compat/DyamicUI"), exports);
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ManhwaWeb = void 0;
 const types_1 = require("@paperback/types");
-// URLs Base
+// URLs Base (Confirmadas por ti)
 const API_URL = "https://manhwawebbackend-production.up.railway.app";
 const WEB_URL = "https://manhwaweb.com";
 class ManhwaWeb extends types_1.Source {
@@ -488,7 +488,8 @@ class ManhwaWeb extends types_1.Source {
             },
         });
     }
-    // --- HELPER: Obtener ID (Priorizamos real_id que es el slug) ---
+    // --- HELPER: Obtener el ID Correcto ---
+    // Prioriza 'real_id' (que es el slug como 'solo-leveling') sobre '_id'
     getIdFromItem(item) {
         return item.real_id || item._id || "";
     }
@@ -499,7 +500,6 @@ class ManhwaWeb extends types_1.Source {
             method: "GET"
         });
         const response = await this.requestManager.schedule(request, 1);
-        // ¡OJO! Parseamos directo, sin buscar .data ni .manhwa porque tu JSON es plano
         let data;
         try {
             data = JSON.parse(response.data);
@@ -507,16 +507,13 @@ class ManhwaWeb extends types_1.Source {
         catch (e) {
             throw new Error(`Error parseando JSON: ${e}`);
         }
-        // Mapeo exacto basado en tu JSON
+        // Mapeo basado en tu JSON
         const title = data.the_real_name || data.name_esp || data._name || "Sin título";
         const image = data._imagen || "https://placehold.co/400x600?text=No+Cover";
         const desc = data._sinopsis || "Sin descripción disponible.";
-        // Estado
         let status = types_1.MangaStatus.ONGOING;
         const statusText = (data._status || "").toLowerCase();
-        if (statusText.includes("publicandose"))
-            status = types_1.MangaStatus.ONGOING;
-        else if (statusText.includes("finalizado"))
+        if (statusText.includes("finalizado"))
             status = types_1.MangaStatus.COMPLETED;
         return createManga({
             id: mangaId,
@@ -538,18 +535,20 @@ class ManhwaWeb extends types_1.Source {
         });
         const response = await this.requestManager.schedule(request, 1);
         const data = JSON.parse(response.data);
-        // Tu JSON muestra que los capítulos están en "chapters" (el array lleno), no en "_chapters" (vacío)
+        // Usamos 'chapters' (el array lleno)
         const rawChapters = data.chapters || [];
         const chapters = [];
         for (const ch of rawChapters) {
-            // ID del capítulo: Usamos el final del link como ID único
-            // Link: https://manhwaweb.com/leer/mi-bias...-1737942690706-1
+            // Lógica Vital: El ID del capítulo debe ser el slug completo.
+            // La web usa: 'IDMANGA-NUMERO' (ej: mi-bias...-1)
+            // Extraemos esto del final del link.
             let chId = "";
             if (ch.link) {
-                const parts = ch.link.split('/');
-                chId = parts[parts.length - 1];
+                const parts = ch.link.split('/').filter((p) => p.length > 0);
+                chId = parts[parts.length - 1]; // Toma "mi-bias-tomo-el-ultimo-tren-_1737942690706-1"
             }
-            else {
+            // Fallback de seguridad
+            if (!chId) {
                 chId = `${mangaId}-${ch.chapter}`;
             }
             chapters.push(createChapter({
@@ -565,24 +564,18 @@ class ManhwaWeb extends types_1.Source {
     }
     // --- 3. Imágenes (Lector) ---
     async getChapterDetails(mangaId, chapterId) {
-        // NOTA: Si el chapterId es "mi-bias...-1", necesitamos el endpoint de capítulo
-        // Asumo que es /chapters/see/:id basado en lógica anterior, 
-        // pero si falla, podría ser que el ID del cap sea solo el número.
-        // Por seguridad, usaremos el ID completo extraído del link.
+        // AQUÍ ESTABA LA CLAVE: Usamos la URL que me diste
+        // URL: /chapters/see/ID-COMPLETO (ej: ...-1)
         const request = createRequestObject({
             url: `${API_URL}/chapters/see/${chapterId}`,
             method: "GET",
         });
         const response = await this.requestManager.schedule(request, 1);
         const data = JSON.parse(response.data);
-        // Búsqueda de imágenes
+        // Extraemos las imágenes de 'data.chapter.img' como en tu JSON
         let pages = [];
-        // Prioridad 1: data.chapter.img (según tu JSON de capítulo que vimos antes)
         if (data.chapter && Array.isArray(data.chapter.img)) {
             pages = data.chapter.img;
-        }
-        else if (data.images && Array.isArray(data.images)) {
-            pages = data.images;
         }
         return createChapterDetails({
             id: chapterId,
@@ -604,7 +597,7 @@ class ManhwaWeb extends types_1.Source {
         for (const item of results) {
             tiles.push(createMangaTile({
                 id: this.getIdFromItem(item),
-                title: createIconText({ text: item.the_real_name || item.name_esp || item._name }),
+                title: createIconText({ text: item.the_real_name || item.name_esp || item._name || "Sin título" }),
                 image: item._imagen || ""
             }));
         }
