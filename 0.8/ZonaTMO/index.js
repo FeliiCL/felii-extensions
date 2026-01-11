@@ -21583,7 +21583,7 @@ const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
 exports.info = {
-    version: '1.3.0',
+    version: '1.3.1',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21614,17 +21614,9 @@ class ZonaTMO extends types_1.Source {
             },
         });
     }
-    // Helper to get mangaId from href
-    getMangaIdFromHref(href) {
-        const parts = href.split('/').filter(p => p);
-        if (parts.length >= 4 && parts[1] === 'manhwa') {
-            return `${parts[2]}/${parts[3]}`;
-        }
-        return '';
-    }
     // 1. Manga Details
     async getMangaDetails(mangaId) {
-        const url = `${BASE_URL}/library/manhwa/${mangaId}`;
+        const url = `${BASE_URL}/library/${mangaId}`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
@@ -21638,7 +21630,7 @@ class ZonaTMO extends types_1.Source {
         else if (statusText.includes("pausado"))
             status = 2;
         const tags = [];
-        $('span.badge').each((i, el) => {
+        $('span.mlabel').each((i, el) => {
             const label = $(el).text().trim();
             if (label)
                 tags.push(createTag({ id: label, label, type: 'blue' }));
@@ -21658,7 +21650,7 @@ class ZonaTMO extends types_1.Source {
     }
     // 2. Chapters
     async getChapters(mangaId) {
-        const url = `${BASE_URL}/library/manhwa/${mangaId}`;
+        const url = `${BASE_URL}/library/${mangaId}`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
@@ -21694,13 +21686,28 @@ class ZonaTMO extends types_1.Source {
     }
     // 3. Chapter Details
     async getChapterDetails(mangaId, chapterId) {
-        const url = `${BASE_URL}/view_uploads/${chapterId}`;
-        const request = createRequestObject({ url, method: "GET" });
+        const uploadUrl = `${BASE_URL}/view_uploads/${chapterId}`;
+        const request = createRequestObject({ url: uploadUrl, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
+        let viewerUrl = '';
+        const button = $('.flex-row button.btn-social').attr("onclick")?.match(/copyToClipboard\(['"`](.*)['"`]\)/i);
+        if (button?.[1]) {
+            let chapurl = button[1];
+            if (chapurl.includes("paginated")) {
+                chapurl = chapurl.replace("paginated", "cascade");
+            }
+            viewerUrl = chapurl;
+        }
+        else {
+            throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
+        }
+        const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
+        const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
+        const viewer$ = cheerio.load(viewerResponse.data);
         const pages = [];
-        $('img').each((i, element) => {
-            const el = $(element);
+        viewer$('img').each((i, element) => {
+            const el = viewer$(element);
             let imgUrl = el.attr('data-src') || el.attr('src');
             if (imgUrl && (imgUrl.includes('img1tmo.com') || imgUrl.includes('uploads'))) {
                 pages.push(imgUrl.trim());
@@ -21721,13 +21728,13 @@ class ZonaTMO extends types_1.Source {
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const tiles = [];
-        $('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        $('.element').each((i, element) => {
             const item = $(element);
-            const titleEl = item.find('h5.text-truncate a');
-            const title = titleEl.text().trim();
-            const href = titleEl.attr('href') || "";
-            const mangaId = this.getMangaIdFromHref(href);
-            const image = item.find('img').attr('src') || "";
+            const a = item.find('a').first();
+            const title = a.find('h5').text().trim();
+            const href = a.attr('href') || "";
+            const mangaId = href.replace('/library/', '');
+            const image = a.find('img').attr('data-src') || "";
             if (mangaId && title) {
                 tiles.push(createMangaTile({
                     id: mangaId,
@@ -21736,7 +21743,7 @@ class ZonaTMO extends types_1.Source {
                 }));
             }
         });
-        const nextPage = $('li.page-item a[rel="next"]').length > 0 ? { page: page + 1 } : undefined;
+        const nextPage = $('.pagination li a[rel="next"]').length > 0 ? { page: page + 1 } : undefined;
         return createPagedResults({
             results: tiles,
             metadata: nextPage
@@ -21757,13 +21764,13 @@ class ZonaTMO extends types_1.Source {
         });
         sectionCallback(popularSection);
         const popularTiles = [];
-        popular$('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        popular$('.element').each((i, element) => {
             const item = popular$(element);
-            const titleEl = item.find('h5.text-truncate a');
-            const title = titleEl.text().trim();
-            const href = titleEl.attr('href') || "";
-            const mangaId = this.getMangaIdFromHref(href);
-            const image = item.find('img').attr('src') || "";
+            const a = item.find('a').first();
+            const title = a.find('h5').text().trim();
+            const href = a.attr('href') || "";
+            const mangaId = href.replace('/library/', '');
+            const image = a.find('img').attr('data-src') || "";
             if (mangaId && title) {
                 popularTiles.push(createMangaTile({
                     id: mangaId,
@@ -21787,13 +21794,13 @@ class ZonaTMO extends types_1.Source {
         });
         sectionCallback(latestSection);
         const latestTiles = [];
-        latest$('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        latest$('.element').each((i, element) => {
             const item = latest$(element);
-            const titleEl = item.find('h5.text-truncate a');
-            const title = titleEl.text().trim();
-            const href = titleEl.attr('href') || "";
-            const mangaId = this.getMangaIdFromHref(href);
-            const image = item.find('img').attr('src') || "";
+            const a = item.find('a').first();
+            const title = a.find('h5').text().trim();
+            const href = a.attr('href') || "";
+            const mangaId = href.replace('/library/', '');
+            const image = a.find('img').attr('data-src') || "";
             if (mangaId && title) {
                 latestTiles.push(createMangaTile({
                     id: mangaId,
@@ -21822,13 +21829,13 @@ class ZonaTMO extends types_1.Source {
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const tiles = [];
-        $('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        $('.element').each((i, element) => {
             const item = $(element);
-            const titleEl = item.find('h5.text-truncate a');
-            const title = titleEl.text().trim();
-            const href = titleEl.attr('href') || "";
-            const mangaId = this.getMangaIdFromHref(href);
-            const image = item.find('img').attr('src') || "";
+            const a = item.find('a').first();
+            const title = a.find('h5').text().trim();
+            const href = a.attr('href') || "";
+            const mangaId = href.replace('/library/', '');
+            const image = a.find('img').attr('data-src') || "";
             if (mangaId && title) {
                 tiles.push(createMangaTile({
                     id: mangaId,
@@ -21837,7 +21844,7 @@ class ZonaTMO extends types_1.Source {
                 }));
             }
         });
-        const nextPage = $('li.page-item a[rel="next"]').length > 0 ? { page: page + 1 } : undefined;
+        const nextPage = $('.pagination li a[rel="next"]').length > 0 ? { page: page + 1 } : undefined;
         return createPagedResults({
             results: tiles,
             metadata: nextPage
