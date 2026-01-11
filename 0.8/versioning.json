@@ -23,16 +23,7 @@
       "contentRating": "MATURE",
       "version": "1.0.0",
       "icon": "icon.png",
-      "tags": [
-        {
-          "text": "Multi-Scan",
-          "type": "default"
-        },
-        {
-          "text": "Español",
-          "type": "blue"
-        }
-      ],
+      "tags": [],
       "websiteBaseURL": "https://zonatmo.com",
       "intents": 21
     }
