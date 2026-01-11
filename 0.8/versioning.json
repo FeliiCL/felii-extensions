@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-01-04T14:00:00Z",
+  "buildTime": "2026-01-11T21:30:00Z",
   "sources": [
     {
       "id": "ManhwaWeb",
@@ -12,6 +12,28 @@
       "icon": "icon.png",
       "tags": [],
       "websiteBaseURL": "https://manhwaweb.com",
+      "intents": 21
+    },
+    {
+      "id": "ZonaTMO",
+      "name": "ZonaTMO",
+      "author": "Felii",
+      "desc": "Lectura desde ZonaTMO",
+      "website": "http://github.com/feliicl",
+      "contentRating": "MATURE",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "tags": [
+        {
+          "text": "Multi-Scan",
+          "type": "default"
+        },
+        {
+          "text": "Español",
+          "type": "blue"
+        }
+      ],
+      "websiteBaseURL": "https://zonatmo.com",
       "intents": 21
     }
   ],
