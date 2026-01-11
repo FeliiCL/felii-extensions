@@ -21582,11 +21582,12 @@ exports.ZonaTMO = exports.info = void 0;
 const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
+const VIEWER_URL = "https://visortmo.com";
 exports.info = {
-    version: '1.0.0',
+    version: '1.0.2',
     name: 'ZonaTMO',
     icon: 'icon.png',
-    author: 'Your Name',
+    author: 'Felii',
     description: 'Extension for ZonaTMO',
     contentRating: types_1.ContentRating.MATURE,
     websiteBaseURL: BASE_URL,
@@ -21616,23 +21617,21 @@ class ZonaTMO extends types_1.Source {
     }
     // 1. Manga Details
     async getMangaDetails(mangaId) {
-        const url = `${BASE_URL}/library/manhwa/${mangaId}/something`; // Adjust 'something' if needed, e.g., 'view' or slug if known
+        const url = `${BASE_URL}/library/manhwa/${mangaId}/manga`; // Assume manhwa; adjust if needed for other types
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const title = $('meta[property="og:title"]').attr('content') || "Sin título";
         const image = $('meta[property="og:image"]').attr('content') || "";
         const desc = $('meta[name="description"]').attr('content') || "Sin descripción";
-        // Try to scrape status from body, e.g., find text like 'Estado: En emisión'
         let status = 0; // ONGOING
         const statusText = $('div.alert-info').text().toLowerCase() || "";
         if (statusText.includes("finalizado"))
-            status = 1; // COMPLETED
+            status = 1;
         else if (statusText.includes("pausado"))
-            status = 2; // HIATUS
-        // Add genres/tags if available
+            status = 2;
         const tags = [];
-        $('span.badge').each((i, el) => {
+        $('span.mlabel').each((i, el) => {
             const label = $(el).text().trim();
             tags.push(createTag({ id: label, label, type: 'blue' }));
         });
@@ -21651,21 +21650,21 @@ class ZonaTMO extends types_1.Source {
     }
     // 2. Chapters
     async getChapters(mangaId) {
-        const url = `${BASE_URL}/library/manhwa/${mangaId}/view`; // Confirm if this is the chapters page
+        const url = `${BASE_URL}/library/manhwa/${mangaId}/view`; // Assume manhwa
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const chapters = [];
-        $('li.upload-link').each((i, element) => {
+        $('li.list-group-item.chapter-item').each((i, element) => {
             const row = $(element);
-            const titleFull = row.find('h4 div.text-truncate a').text().trim();
+            const titleFull = row.find('div.chapter-title').text().trim();
             const chapNumMatch = titleFull.match(/Capítulo\s+([\d\.]+)/);
             const chapNum = chapNumMatch ? parseFloat(chapNumMatch[1]) : 0;
-            const uploadList = row.find('ul.chapter-list li.list-group-item');
+            const uploadList = row.find('ul.group-list li.group-item');
             uploadList.each((j, upload) => {
                 const up = $(upload);
-                const groupName = up.find('div.text-truncate a').first().text().trim() || "Desconocido";
-                const playBtn = up.find('div.text-right a.btn-default');
+                const groupName = up.find('div.group-name').text().trim() || "Desconocido";
+                const playBtn = up.find('a.btn-view');
                 const href = playBtn.attr('href');
                 if (href) {
                     const uploadId = href.split('/').pop() || "";
@@ -21683,19 +21682,19 @@ class ZonaTMO extends types_1.Source {
                 }
             });
         });
-        return chapters.reverse(); // Latest first
+        return chapters.reverse();
     }
     // 3. Chapter Details
     async getChapterDetails(mangaId, chapterId) {
-        const url = `${BASE_URL}/view_uploads/${chapterId}`;
+        const url = `${VIEWER_URL}/view_uploads/${chapterId}`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const pages = [];
-        $('img').each((i, element) => {
+        $('img.viewer-img').each((i, element) => {
             const el = $(element);
             let imgUrl = el.attr('data-src') || el.attr('src');
-            if (imgUrl && (imgUrl.includes('img1tmo.com') || imgUrl.includes('uploads'))) {
+            if (imgUrl) {
                 pages.push(imgUrl.trim());
             }
         });
@@ -21707,20 +21706,21 @@ class ZonaTMO extends types_1.Source {
     }
     // 4. Search
     async getSearchResults(query, metadata) {
-        const page = metadata?.page || 1;
-        const term = encodeURIComponent(query.title || "");
+        const page = metadata?.page ?? 1;
+        const term = encodeURIComponent(query.title ?? "");
         const url = `${BASE_URL}/library?order_item=alfabetico&order_dir=asc&title=${term}&_pg=${page}&filter_by=title`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const tiles = [];
-        $('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        $('div.row > div.col-md-2.mb-3').each((i, element) => {
             const item = $(element);
             const titleEl = item.find('h5.text-truncate a');
             const title = titleEl.text().trim();
             const href = titleEl.attr('href') || "";
-            const id = href.split('/')[3]; // /library/manhwa/{id}/{slug} -> index 3 is id
-            const image = item.find('img').attr('src') || "";
+            const parts = href.split('/');
+            const id = parts[3]; // /library/type/id/slug -> id at index 3
+            const image = item.find('img.thumbnail-img').attr('src') || "";
             if (id && title) {
                 tiles.push(createMangaTile({
                     id: id,
@@ -21729,7 +21729,7 @@ class ZonaTMO extends types_1.Source {
                 }));
             }
         });
-        const nextPage = $('a.pagination-next').length > 0 ? { page: page + 1 } : undefined;
+        const nextPage = $('li.page-item a[rel="next"]').length > 0 ? { page: page + 1 } : undefined;
         return createPagedResults({
             results: tiles,
             metadata: nextPage
@@ -21750,13 +21750,14 @@ class ZonaTMO extends types_1.Source {
         });
         sectionCallback(popularSection);
         const popularTiles = [];
-        popular$('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        popular$('div.row > div.col-md-2.mb-3').each((i, element) => {
             const item = popular$(element);
             const titleEl = item.find('h5.text-truncate a');
             const title = titleEl.text().trim();
             const href = titleEl.attr('href') || "";
-            const id = href.split('/')[3];
-            const image = item.find('img').attr('src') || "";
+            const parts = href.split('/');
+            const id = parts[3];
+            const image = item.find('img.thumbnail-img').attr('src') || "";
             if (id && title) {
                 popularTiles.push(createMangaTile({
                     id: id,
@@ -21765,7 +21766,7 @@ class ZonaTMO extends types_1.Source {
                 }));
             }
         });
-        popularSection.items = popularTiles.slice(0, 10); // Limit to 10 for section
+        popularSection.items = popularTiles.slice(0, 10);
         sectionCallback(popularSection);
         // Latest Added
         const latestUrl = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=1&filter_by=title`;
@@ -21780,13 +21781,14 @@ class ZonaTMO extends types_1.Source {
         });
         sectionCallback(latestSection);
         const latestTiles = [];
-        latest$('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        latest$('div.row > div.col-md-2.mb-3').each((i, element) => {
             const item = latest$(element);
             const titleEl = item.find('h5.text-truncate a');
             const title = titleEl.text().trim();
             const href = titleEl.attr('href') || "";
-            const id = href.split('/')[3];
-            const image = item.find('img').attr('src') || "";
+            const parts = href.split('/');
+            const id = parts[3];
+            const image = item.find('img.thumbnail-img').attr('src') || "";
             if (id && title) {
                 latestTiles.push(createMangaTile({
                     id: id,
@@ -21797,11 +21799,10 @@ class ZonaTMO extends types_1.Source {
         });
         latestSection.items = latestTiles.slice(0, 10);
         sectionCallback(latestSection);
-        // Add more sections if needed, e.g., Trending from home page
     }
-    // View More for sections with pagination
+    // View More
     async getViewMoreItems(homepageSectionId, metadata) {
-        const page = metadata?.page || 1;
+        const page = metadata?.page ?? 1;
         let url = '';
         if (homepageSectionId === 'popular') {
             url = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=${page}&filter_by=title`;
@@ -21816,13 +21817,14 @@ class ZonaTMO extends types_1.Source {
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         const tiles = [];
-        $('div.row > div.col-6.col-md-2.mb-3').each((i, element) => {
+        $('div.row > div.col-md-2.mb-3').each((i, element) => {
             const item = $(element);
             const titleEl = item.find('h5.text-truncate a');
             const title = titleEl.text().trim();
             const href = titleEl.attr('href') || "";
-            const id = href.split('/')[3];
-            const image = item.find('img').attr('src') || "";
+            const parts = href.split('/');
+            const id = parts[3];
+            const image = item.find('img.thumbnail-img').attr('src') || "";
             if (id && title) {
                 tiles.push(createMangaTile({
                     id: id,
@@ -21831,7 +21833,7 @@ class ZonaTMO extends types_1.Source {
                 }));
             }
         });
-        const nextPage = $('a.pagination-next').length > 0 ? { page: page + 1 } : undefined;
+        const nextPage = $('li.page-item a[rel="next"]').length > 0 ? { page: page + 1 } : undefined;
         return createPagedResults({
             results: tiles,
             metadata: nextPage
