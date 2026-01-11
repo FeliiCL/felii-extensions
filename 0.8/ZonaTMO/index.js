@@ -21583,7 +21583,7 @@ const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
 exports.info = {
-    version: '1.3.2',
+    version: '1.3.3',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21614,7 +21614,7 @@ class ZonaTMO extends types_1.Source {
             },
         });
     }
-    async getCloudflareBypassRequest() {
+    getCloudflareBypassRequest() {
         return createRequestObject({
             url: BASE_URL,
             method: 'GET',
@@ -21626,31 +21626,29 @@ class ZonaTMO extends types_1.Source {
     }
     CloudFlareError(status) {
         if (status === 503 || status === 403) {
-            throw new Error(`Cloudflare protection detected - enable DDOS Protection in extension settings and restart Paperback!\nStatus code: ${status}`);
+            throw new Error(`CLOUDFLARE BYPASS ERROR: Please go to the homepage of the source and press Cloudflare Bypass. If that doesn't work, try restarting the app.\nStatus code: ${status}`);
         }
     }
-    // Parser functions
+    // Parser for home/search/view more
     parseHomeSection($, baseUrl) {
         const manga = [];
-        $('.element').each((i, elem) => {
-            const item = $(elem);
-            const a = item.find('a').first();
-            const title = a.find('h5.text-truncate').text().trim();
-            const href = a.attr('href') || "";
-            const mangaId = href.replace('/library/', '');
-            const image = item.find('img').attr('data-src') || item.find('img').attr('src') || "";
-            if (mangaId && title) {
+        $('div.element').each((i, elem) => {
+            const item = $('a', elem).first();
+            const title = $('h5.text-truncate', item).first().text().trim();
+            const image = $('img', item).attr('data-src') || $('img', item).attr('src') || '';
+            const id = item.attr('href')?.replace(`${baseUrl}/library/`, '') || '';
+            if (id && title) {
                 manga.push(createMangaTile({
-                    id: mangaId,
-                    title: createIconText({ text: title }),
-                    image: image
+                    id,
+                    image,
+                    title: createIconText({ text: title })
                 }));
             }
         });
         return manga;
     }
     NextPage($) {
-        return $('.pagination li a[rel="next"]').length > 0;
+        return $('ul.pagination > li > a[rel="next"]').length > 0;
     }
     // 1. Manga Details
     async getMangaDetails(mangaId) {
