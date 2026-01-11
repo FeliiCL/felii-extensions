@@ -21583,7 +21583,7 @@ const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
 exports.info = {
-    version: '1.3.3',
+    version: '1.3.4',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21595,7 +21595,7 @@ exports.info = {
 class ZonaTMO extends types_1.Source {
     constructor() {
         super(...arguments);
-        this.requestManager = createRequestManager({
+        this.requestManager = (0, types_1.createRequestManager)({
             requestsPerSecond: 3,
             requestTimeout: 20000,
             interceptor: {
@@ -21615,7 +21615,7 @@ class ZonaTMO extends types_1.Source {
         });
     }
     getCloudflareBypassRequest() {
-        return createRequestObject({
+        return (0, types_1.createRequestObject)({
             url: BASE_URL,
             method: 'GET',
             headers: {
@@ -21638,10 +21638,10 @@ class ZonaTMO extends types_1.Source {
             const image = $('img', item).attr('data-src') || $('img', item).attr('src') || '';
             const id = item.attr('href')?.replace(`${baseUrl}/library/`, '') || '';
             if (id && title) {
-                manga.push(createMangaTile({
+                manga.push((0, types_1.createMangaTile)({
                     id,
                     image,
-                    title: createIconText({ text: title })
+                    title: (0, types_1.createIconText)({ text: title })
                 }));
             }
         });
@@ -21653,7 +21653,7 @@ class ZonaTMO extends types_1.Source {
     // 1. Manga Details
     async getMangaDetails(mangaId) {
         const url = `${BASE_URL}/library/${mangaId}`;
-        const request = createRequestObject({ url, method: "GET" });
+        const request = (0, types_1.createRequestObject)({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
@@ -21670,10 +21670,10 @@ class ZonaTMO extends types_1.Source {
         $('span.mlabel').each((i, el) => {
             const label = $(el).text().trim();
             if (label)
-                tags.push(createTag({ id: label, label, type: 'blue' }));
+                tags.push((0, types_1.createTag)({ id: label, label, type: 'blue' }));
         });
-        const tagSections = [createTagSection({ id: '0', label: 'Géneros', tags })];
-        return createManga({
+        const tagSections = [(0, types_1.createTagSection)({ id: '0', label: 'Géneros', tags })];
+        return (0, types_1.createManga)({
             id: mangaId,
             titles: [title],
             image: image,
@@ -21688,7 +21688,7 @@ class ZonaTMO extends types_1.Source {
     // 2. Chapters
     async getChapters(mangaId) {
         const url = `${BASE_URL}/library/${mangaId}`;
-        const request = createRequestObject({ url, method: "GET" });
+        const request = (0, types_1.createRequestObject)({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
@@ -21707,7 +21707,7 @@ class ZonaTMO extends types_1.Source {
                 if (href) {
                     const uploadId = href.split('/').pop() || "";
                     if (uploadId) {
-                        chapters.push(createChapter({
+                        chapters.push((0, types_1.createChapter)({
                             id: uploadId,
                             mangaId: mangaId,
                             name: `${titleFull} [${groupName}]`,
@@ -21725,7 +21725,7 @@ class ZonaTMO extends types_1.Source {
     // 3. Chapter Details
     async getChapterDetails(mangaId, chapterId) {
         const uploadUrl = `${BASE_URL}/view_uploads/${chapterId}`;
-        const request = createRequestObject({ url: uploadUrl, method: "GET" });
+        const request = (0, types_1.createRequestObject)({ url: uploadUrl, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
@@ -21741,7 +21741,7 @@ class ZonaTMO extends types_1.Source {
         else {
             throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
         }
-        const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
+        const viewerRequest = (0, types_1.createRequestObject)({ url: viewerUrl, method: "GET" });
         const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
         this.CloudFlareError(viewerResponse.status);
         const viewer$ = cheerio.load(viewerResponse.data);
@@ -21753,7 +21753,7 @@ class ZonaTMO extends types_1.Source {
                 pages.push(imgUrl.trim());
             }
         });
-        return createChapterDetails({
+        return (0, types_1.createChapterDetails)({
             id: chapterId,
             mangaId: mangaId,
             pages: pages,
@@ -21764,13 +21764,13 @@ class ZonaTMO extends types_1.Source {
         const page = metadata?.page ?? 1;
         const term = encodeURIComponent(query.title ?? "");
         const url = `${BASE_URL}/library?order_item=alfabetico&order_dir=asc&title=${term}&_pg=${page}&filter_by=title`;
-        const request = createRequestObject({ url, method: "GET" });
+        const request = (0, types_1.createRequestObject)({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
         const tiles = this.parseHomeSection($, BASE_URL);
         const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
-        return createPagedResults({
+        return (0, types_1.createPagedResults)({
             results: tiles,
             metadata: nextPage
         });
@@ -21779,11 +21779,11 @@ class ZonaTMO extends types_1.Source {
     async getHomePageSections(sectionCallback) {
         // Popular
         const popularUrl = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=1&filter_by=title`;
-        const popularRequest = createRequestObject({ url: popularUrl, method: "GET" });
+        const popularRequest = (0, types_1.createRequestObject)({ url: popularUrl, method: "GET" });
         const popularResponse = await this.requestManager.schedule(popularRequest, 1);
         this.CloudFlareError(popularResponse.status);
         const popular$ = cheerio.load(popularResponse.data);
-        const popularSection = createHomeSection({
+        const popularSection = (0, types_1.createHomeSection)({
             id: 'popular',
             title: 'Lo más popular',
             type: types_1.HomeSectionType.singleRowLarge,
@@ -21794,11 +21794,11 @@ class ZonaTMO extends types_1.Source {
         sectionCallback(popularSection);
         // Latest Added
         const latestUrl = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=1&filter_by=title`;
-        const latestRequest = createRequestObject({ url: latestUrl, method: "GET" });
+        const latestRequest = (0, types_1.createRequestObject)({ url: latestUrl, method: "GET" });
         const latestResponse = await this.requestManager.schedule(latestRequest, 1);
         this.CloudFlareError(latestResponse.status);
         const latest$ = cheerio.load(latestResponse.data);
-        const latestSection = createHomeSection({
+        const latestSection = (0, types_1.createHomeSection)({
             id: 'latest_added',
             title: 'Últimos añadidos',
             type: types_1.HomeSectionType.singleRowNormal,
@@ -21819,15 +21819,15 @@ class ZonaTMO extends types_1.Source {
             url = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=${page}&filter_by=title`;
         }
         else {
-            return createPagedResults({ results: [] });
+            return (0, types_1.createPagedResults)({ results: [] });
         }
-        const request = createRequestObject({ url, method: "GET" });
+        const request = (0, types_1.createRequestObject)({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
         const tiles = this.parseHomeSection($, BASE_URL);
         const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
-        return createPagedResults({
+        return (0, types_1.createPagedResults)({
             results: tiles,
             metadata: nextPage
         });
