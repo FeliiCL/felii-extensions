@@ -21739,10 +21739,10 @@ class ZonaTMO extends types_1.Source {
                         id: uploadId,
                         mangaId: mangaId,
                         // Aquí ponemos el emoji 🇪🇸 en el nombre del capítulo
-                        name: `${chapterNameFull} [🇪🇸 ${groupName}]`,
+                        name: `${chapterNameFull}`,
                         chapNum: chapNum,
                         time: time,
-                        langCode: "es",
+                        langCode: "🇪🇸",
                         group: groupName
                     }));
                 }
