@@ -578,7 +578,7 @@ class ManhwaWeb extends types_1.Source {
                 name: `Capítulo ${ch.chapter}`,
                 chapNum: parseFloat(ch.chapter) || 0,
                 time: ch.create ? new Date(ch.create) : new Date(),
-                langCode: "es",
+                langCode: "🇪🇸",
             }));
         }
         // Reverse for latest first
