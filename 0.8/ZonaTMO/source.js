@@ -21582,9 +21582,9 @@ exports.ZonaTMO = exports.info = void 0;
 const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
-const USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 exports.info = {
-    version: '1.3.9',
+    version: '1.4.0',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21666,9 +21666,8 @@ class ZonaTMO extends types_1.Source {
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
-        // Selectores actualizados según body.html
         const titleEl = $('h1.element-title').first();
-        // Eliminar el badge tipo "Manhwa" del título
+        // Limpieza robusta del título
         const title = titleEl.contents().filter((i, el) => el.type === 'text').text().trim() || titleEl.text().trim();
         const image = $('img.book-thumbnail').attr('src') || "";
         const desc = $('p.element-description').text().trim() || "Sin descripción";
@@ -21684,7 +21683,6 @@ class ZonaTMO extends types_1.Source {
             if (label)
                 tags.push(createTag({ id: label, label, type: 'blue' }));
         });
-        // Agregar tipo (Manhwa/Manga) como tag si existe
         const typeLabel = $('h1.element-title small.badge').text().trim();
         if (typeLabel)
             tags.push(createTag({ id: typeLabel, label: typeLabel, type: 'default' }));
@@ -21708,41 +21706,40 @@ class ZonaTMO extends types_1.Source {
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
         const chapters = [];
-        // --- SELECTORES CORREGIDOS SEGÚN TU HTML ---
-        // Buscamos el div con id="chapters" y luego la lista dentro
-        const chapterContainer = $('div#chapters > ul.list-group');
-        // Iteramos sobre los elementos colapsables (li.upload-link)
+        // Selector robusto: busca el contenedor de capítulos por ID
+        const chapterContainer = $('div#chapters');
+        // Iterar sobre cada bloque de capítulo colapsable
         chapterContainer.find('li.upload-link').each((i, element) => {
             const row = $(element);
-            // Nombre del capítulo (ej: "Capítulo 1.00")
-            const titleElement = row.find('h4 div.col-10 a.btn-collapse');
-            const chapterNameFull = titleElement.text().trim();
-            // Extraer número con regex
-            const chapNumMatch = chapterNameFull.match(/Cap[íi]tulo\s+([\d\.]+)/i);
+            // Nombre del capítulo (ej: Capítulo 1.00) - Buscamos el texto dentro del botón de colapso
+            const titleElement = row.find('.btn-collapse');
+            let chapterNameFull = titleElement.text().trim();
+            // Regex flexible para números (soporta "Capítulo 1", "Cap. 1", "1")
+            const chapNumMatch = chapterNameFull.match(/(?:Cap[íi]tulo|Cap\.?)\s*([\d\.]+)/i);
             const chapNum = chapNumMatch ? parseFloat(chapNumMatch[1]) : 0;
-            // Ahora buscamos la lista anidada (las subidas de los fansubs)
-            // Está dentro de un div con id dinámico, pero podemos buscar por clase .chapter-list
+            // Iterar sobre las subidas (scans) dentro de este capítulo
             const uploads = row.find('ul.chapter-list > li.list-group-item');
             uploads.each((j, upload) => {
                 const up = $(upload);
-                // Grupo (Scan)
-                const groupA = up.find('div.col-md-6 a'); // Ajustado a col-md-6
-                const groupName = groupA.text().trim() || "Desconocido";
-                // Fecha
-                const dateBadge = up.find('span.badge.badge-primary');
-                const dateText = dateBadge.text().trim();
+                // 1. Grupo (Scan)
+                // Usamos .text-truncate para encontrar la columna del nombre sin importar si es col-4 o col-12
+                const groupContainer = up.find('div.text-truncate');
+                const groupName = groupContainer.find('a').first().text().trim() || "Desconocido";
+                // 2. Fecha
+                const dateText = up.find('span.badge').text().trim();
                 const dateMatch = dateText.match(/(\d{4}-\d{2}-\d{2})/);
                 const time = dateMatch ? new Date(dateMatch[1]) : new Date();
-                // Enlace y ID
-                const linkBtn = up.find('div.text-right a.btn-default');
+                // 3. Enlace
+                // Buscamos el botón "Play" o cualquier botón btn-default al final
+                const linkBtn = up.find('a.btn-default').first();
                 const href = linkBtn.attr('href') || '';
-                // Extraer ID de la URL (ej: zonatmo.com/view_uploads/1689945 -> 1689945)
                 const uploadId = href.split('/').pop() || '';
                 if (uploadId) {
                     chapters.push(createChapter({
                         id: uploadId,
                         mangaId: mangaId,
-                        name: chapterNameFull,
+                        // Aquí ponemos el emoji 🇪🇸 en el nombre del capítulo
+                        name: `${chapterNameFull} [🇪🇸 ${groupName}]`,
                         chapNum: chapNum,
                         time: time,
                         langCode: "es",
@@ -21751,7 +21748,7 @@ class ZonaTMO extends types_1.Source {
                 }
             });
         });
-        return chapters; // TMO suele darlos en orden descendente, no hace falta reverse si queremos el más nuevo arriba
+        return chapters;
     }
     async getChapterDetails(mangaId, chapterId) {
         const uploadUrl = `${BASE_URL}/view_uploads/${chapterId}`;
@@ -21760,37 +21757,74 @@ class ZonaTMO extends types_1.Source {
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
         let viewerUrl = '';
-        // 1. Redirección JS
-        const scripts = $('script').map((i, el) => $(el).html()).get().join(' ');
-        const locationMatch = scripts.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/);
-        if (locationMatch && locationMatch[1])
+        // --- ESTRATEGIA 1: Redirección por JavaScript (window.location) ---
+        // Buscamos en todo el HTML por si está en un script inline
+        const htmlContent = response.data;
+        // Regex mejorada basada en source.js de OnlyFadi
+        const locationMatch = htmlContent.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/);
+        if (locationMatch && locationMatch[1]) {
             viewerUrl = locationMatch[1];
-        // 2. Botón directo
-        if (!viewerUrl)
-            viewerUrl = $('.flex-row a.btn-social').attr('href') || '';
-        // 3. Método antiguo (onclick)
+        }
+        // --- ESTRATEGIA 2: Redirección por Meta Tag ---
         if (!viewerUrl) {
+            const metaRefresh = $('meta[http-equiv="refresh"]').attr('content');
+            // content="0; url=https://..."
+            if (metaRefresh) {
+                const urlMatch = metaRefresh.match(/url=(.+)/i);
+                if (urlMatch && urlMatch[1]) {
+                    viewerUrl = urlMatch[1];
+                }
+            }
+        }
+        // --- ESTRATEGIA 3: Botón directo o copyToClipboard ---
+        if (!viewerUrl) {
+            // Intentar leer el onclick del botón social (método antiguo)
             const onclick = $('.flex-row button.btn-social').attr('onclick') || '';
             const match = onclick.match(/copyToClipboard\(['"`](.*)['"`]\)/i);
-            if (match && match[1])
+            if (match && match[1]) {
                 viewerUrl = match[1];
+            }
+            else {
+                // Intentar leer el href directo
+                viewerUrl = $('.flex-row a.btn-social').attr('href') || '';
+            }
         }
-        if (!viewerUrl)
-            throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
-        if (viewerUrl.includes("paginated"))
+        if (!viewerUrl) {
+            // Último recurso: comprobar si la página actual YA tiene las imágenes (a veces pasa)
+            if ($('div.img-container img.viewer-img').length > 0) {
+                viewerUrl = uploadUrl; // La URL actual es la correcta
+            }
+            else {
+                throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
+            }
+        }
+        // Conversión a modo Cascada (Cascade) siempre
+        if (viewerUrl.includes("paginated")) {
             viewerUrl = viewerUrl.replace("paginated", "cascade");
-        if (viewerUrl.startsWith('/'))
+        }
+        // Asegurar URL absoluta
+        if (viewerUrl.startsWith('/')) {
             viewerUrl = `${BASE_URL}${viewerUrl}`;
-        const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
-        const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
-        const viewer$ = cheerio.load(viewerResponse.data);
-        this.CloudFlareError(viewerResponse.status, viewer$);
+        }
+        // Si ya estamos en la página de imágenes, no hacemos request extra
+        let viewer$;
+        if (viewerUrl === uploadUrl) {
+            viewer$ = $;
+        }
+        else {
+            const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
+            const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
+            viewer$ = cheerio.load(viewerResponse.data);
+            this.CloudFlareError(viewerResponse.status, viewer$);
+        }
         const pages = [];
         viewer$('div.img-container > img.viewer-img').each((i, element) => {
             const el = viewer$(element);
+            // Prioridad a data-src (lazy loading) luego src
             let imgUrl = el.attr('data-src') || el.attr('src') || '';
-            if (imgUrl)
+            if (imgUrl) {
                 pages.push(imgUrl.trim());
+            }
         });
         return createChapterDetails({
             id: chapterId,
