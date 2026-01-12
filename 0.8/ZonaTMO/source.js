@@ -21583,7 +21583,7 @@ const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
 exports.info = {
-    version: '1.3.6',
+    version: '1.3.7',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21660,7 +21660,9 @@ class ZonaTMO extends types_1.Source {
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
-        const title = $('h1.element-title').contents().first().text().trim() || "Sin título";
+        const titleEl = $('h1.element-title');
+        titleEl.find('small').remove();
+        const title = titleEl.text().trim() || "Sin título";
         const image = $('img.book-thumbnail').attr('src') || "";
         const desc = $('p.element-description').text().trim() || "Sin descripción";
         let status = 0; // ONGOING
@@ -21696,10 +21698,10 @@ class ZonaTMO extends types_1.Source {
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
         const chapters = [];
-        $('ul.main.version-chaps > li.chapter-container').each((i, element) => {
+        $('ul.chapters-list > li.chapter-container').each((i, element) => {
             const row = $(element);
             const h4Text = $('h4.text-truncate', row).text().trim();
-            const chapNumMatch = h4Text.match(/Capítulo (\d+\.?\d*)/);
+            const chapNumMatch = h4Text.match(/Capítulo\s+([\d\.]+)/);
             const chapNum = chapNumMatch ? parseFloat(chapNumMatch[1]) : 0;
             const uploadList = $('ul.chapter-list > li.list-group-item', row);
             uploadList.each((j, upload) => {
