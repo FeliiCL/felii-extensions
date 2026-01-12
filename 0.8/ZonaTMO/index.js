@@ -21582,8 +21582,9 @@ exports.ZonaTMO = exports.info = void 0;
 const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 exports.info = {
-    version: '1.3.7',
+    version: '1.3.8',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21604,7 +21605,10 @@ class ZonaTMO extends types_1.Source {
                         ...(request.headers ?? {}),
                         "Referer": `${BASE_URL}/`,
                         "Origin": BASE_URL,
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+                        "User-Agent": USER_AGENT,
+                        // Headers adicionales para parecer un navegador real
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
                     };
                     return request;
                 },
@@ -21620,13 +21624,20 @@ class ZonaTMO extends types_1.Source {
             method: 'GET',
             headers: {
                 "referer": `${BASE_URL}/`,
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+                "user-agent": USER_AGENT
             }
         });
     }
-    CloudFlareError(status) {
+    // Detección mejorada de Cloudflare (Status codes + JS Challenge title)
+    CloudFlareError(status, $) {
         if (status === 503 || status === 403) {
-            throw new Error(`CLOUDFLARE BYPASS ERROR: Please go to the homepage of the source and press Cloudflare Bypass. If that doesn't work, try restarting the app.\nStatus code: ${status}`);
+            throw new Error(`CLOUDFLARE BYPASS ERROR: Please go to the homepage of the source and press Cloudflare Bypass. Status code: ${status}`);
+        }
+        if ($) {
+            const title = $('title').text();
+            if (title.includes("Just a moment") || title.includes("Cloudflare")) {
+                throw new Error(`CLOUDFLARE BYPASS ERROR (JS Challenge detected). Please restart the app or use Cloudflare Bypass.`);
+            }
         }
     }
     // Parser for home/search/view more
@@ -21658,8 +21669,8 @@ class ZonaTMO extends types_1.Source {
         const url = `${BASE_URL}/library/${mangaId}`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
+        this.CloudFlareError(response.status, $);
         const titleEl = $('h1.element-title');
         titleEl.find('small').remove();
         const title = titleEl.text().trim() || "Sin título";
@@ -21695,9 +21706,10 @@ class ZonaTMO extends types_1.Source {
         const url = `${BASE_URL}/library/${mangaId}`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
+        this.CloudFlareError(response.status, $);
         const chapters = [];
+        // Selectores más genéricos por si acaso cambiaron
         $('ul.chapters-list > li.chapter-container').each((i, element) => {
             const row = $(element);
             const h4Text = $('h4.text-truncate', row).text().trim();
@@ -21728,30 +21740,52 @@ class ZonaTMO extends types_1.Source {
         });
         return chapters.reverse();
     }
-    // 3. Chapter Details
+    // 3. Chapter Details (CORREGIDO)
     async getChapterDetails(mangaId, chapterId) {
+        // La URL de carga inicial
         const uploadUrl = `${BASE_URL}/view_uploads/${chapterId}`;
         const request = createRequestObject({ url: uploadUrl, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
+        this.CloudFlareError(response.status, $);
         let viewerUrl = '';
-        const onclick = $('.flex-row button.btn-social').attr('onclick') || '';
-        const match = onclick.match(/copyToClipboard\(['"`](.*)['"`]\)/i);
-        if (match && match[1]) {
-            let chapurl = match[1];
-            if (chapurl.includes("paginated")) {
-                chapurl = chapurl.replace("paginated", "cascade");
+        // --- ESTRATEGIA 1: Redirección automática por JavaScript ---
+        // ZonaTMO a veces usa un script que hace window.location.href = "..."
+        const scripts = $('script').map((i, el) => $(el).html()).get().join(' ');
+        const locationMatch = scripts.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/);
+        if (locationMatch && locationMatch[1]) {
+            viewerUrl = locationMatch[1];
+        }
+        // --- ESTRATEGIA 2: Método antiguo (copyToClipboard) ---
+        if (!viewerUrl) {
+            const onclick = $('.flex-row button.btn-social').attr('onclick') || '';
+            const match = onclick.match(/copyToClipboard\(['"`](.*)['"`]\)/i);
+            if (match && match[1]) {
+                viewerUrl = match[1];
             }
-            viewerUrl = chapurl;
         }
-        else {
-            throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
+        // --- ESTRATEGIA 3: Botón directo ---
+        if (!viewerUrl) {
+            // A veces el enlace está directamente en el href de un botón
+            viewerUrl = $('.flex-row a.btn-social').attr('href') || '';
         }
+        if (!viewerUrl) {
+            // Log para debuggear si falla
+            throw new Error(`Failed to parse viewer URL for chapter ${chapterId}. Response size: ${response.data.length}`);
+        }
+        // Fix común: cambiar modo paginado a cascada
+        if (viewerUrl.includes("paginated")) {
+            viewerUrl = viewerUrl.replace("paginated", "cascade");
+        }
+        // Asegurar URL absoluta
+        if (viewerUrl.startsWith('/')) {
+            viewerUrl = `${BASE_URL}${viewerUrl}`;
+        }
+        // Petición al visor real de imágenes
         const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
         const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
-        this.CloudFlareError(viewerResponse.status);
         const viewer$ = cheerio.load(viewerResponse.data);
+        this.CloudFlareError(viewerResponse.status, viewer$);
         const pages = [];
         viewer$('div.img-container > img.viewer-img').each((i, element) => {
             const el = viewer$(element);
@@ -21773,8 +21807,8 @@ class ZonaTMO extends types_1.Source {
         const url = `${BASE_URL}/library?order_item=alfabetico&order_dir=asc&title=${term}&_pg=${page}&filter_by=title`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
+        this.CloudFlareError(response.status, $);
         const tiles = this.parseHomeSection($, BASE_URL);
         const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
         return createPagedResults({
@@ -21788,8 +21822,8 @@ class ZonaTMO extends types_1.Source {
         const popularUrl = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=1&filter_by=title`;
         const popularRequest = createRequestObject({ url: popularUrl, method: "GET" });
         const popularResponse = await this.requestManager.schedule(popularRequest, 1);
-        this.CloudFlareError(popularResponse.status);
         const popular$ = cheerio.load(popularResponse.data);
+        this.CloudFlareError(popularResponse.status, popular$);
         const popularSection = createHomeSection({
             id: 'popular',
             title: 'Lo más popular',
@@ -21803,8 +21837,8 @@ class ZonaTMO extends types_1.Source {
         const latestUrl = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=1&filter_by=title`;
         const latestRequest = createRequestObject({ url: latestUrl, method: "GET" });
         const latestResponse = await this.requestManager.schedule(latestRequest, 1);
-        this.CloudFlareError(latestResponse.status);
         const latest$ = cheerio.load(latestResponse.data);
+        this.CloudFlareError(latestResponse.status, latest$);
         const latestSection = createHomeSection({
             id: 'latest_added',
             title: 'Últimos añadidos',
@@ -21830,8 +21864,8 @@ class ZonaTMO extends types_1.Source {
         }
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
+        this.CloudFlareError(response.status, $);
         const tiles = this.parseHomeSection($, BASE_URL);
         const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
         return createPagedResults({
