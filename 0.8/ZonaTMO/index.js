@@ -21582,9 +21582,9 @@ exports.ZonaTMO = exports.info = void 0;
 const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1";
 exports.info = {
-    version: '1.3.8',
+    version: '1.3.9',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21606,9 +21606,7 @@ class ZonaTMO extends types_1.Source {
                         "Referer": `${BASE_URL}/`,
                         "Origin": BASE_URL,
                         "User-Agent": USER_AGENT,
-                        // Headers adicionales para parecer un navegador real
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
                     };
                     return request;
                 },
@@ -21628,7 +21626,6 @@ class ZonaTMO extends types_1.Source {
             }
         });
     }
-    // Detección mejorada de Cloudflare (Status codes + JS Challenge title)
     CloudFlareError(status, $) {
         if (status === 503 || status === 403) {
             throw new Error(`CLOUDFLARE BYPASS ERROR: Please go to the homepage of the source and press Cloudflare Bypass. Status code: ${status}`);
@@ -21640,7 +21637,6 @@ class ZonaTMO extends types_1.Source {
             }
         }
     }
-    // Parser for home/search/view more
     parseHomeSection($, baseUrl) {
         const manga = [];
         $('div.row > div.element').each((i, elem) => {
@@ -21664,23 +21660,23 @@ class ZonaTMO extends types_1.Source {
     NextPage($) {
         return $('ul.pagination > li > a[rel="next"]').length > 0;
     }
-    // 1. Manga Details
     async getMangaDetails(mangaId) {
         const url = `${BASE_URL}/library/${mangaId}`;
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
-        const titleEl = $('h1.element-title');
-        titleEl.find('small').remove();
-        const title = titleEl.text().trim() || "Sin título";
+        // Selectores actualizados según body.html
+        const titleEl = $('h1.element-title').first();
+        // Eliminar el badge tipo "Manhwa" del título
+        const title = titleEl.contents().filter((i, el) => el.type === 'text').text().trim() || titleEl.text().trim();
         const image = $('img.book-thumbnail').attr('src') || "";
         const desc = $('p.element-description').text().trim() || "Sin descripción";
         let status = 0; // ONGOING
         const statusText = $('span.book-status').text().toLowerCase().trim();
-        if (statusText === "finalizado")
+        if (statusText.includes("finalizado"))
             status = 1;
-        else if (statusText === "pausado")
+        else if (statusText.includes("pausado"))
             status = 2;
         const tags = [];
         $('h6 a.badge.badge-primary').each((i, el) => {
@@ -21688,6 +21684,10 @@ class ZonaTMO extends types_1.Source {
             if (label)
                 tags.push(createTag({ id: label, label, type: 'blue' }));
         });
+        // Agregar tipo (Manhwa/Manga) como tag si existe
+        const typeLabel = $('h1.element-title small.badge').text().trim();
+        if (typeLabel)
+            tags.push(createTag({ id: typeLabel, label: typeLabel, type: 'default' }));
         const tagSections = [createTagSection({ id: '0', label: 'Géneros', tags })];
         return createManga({
             id: mangaId,
@@ -21697,11 +21697,10 @@ class ZonaTMO extends types_1.Source {
             status: status,
             author: "Desconocido",
             desc: desc,
-            hentai: true,
+            hentai: false,
             tags: tagSections
         });
     }
-    // 2. Chapters
     async getChapters(mangaId) {
         const url = `${BASE_URL}/library/${mangaId}`;
         const request = createRequestObject({ url, method: "GET" });
@@ -21709,27 +21708,41 @@ class ZonaTMO extends types_1.Source {
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
         const chapters = [];
-        // Selectores más genéricos por si acaso cambiaron
-        $('ul.chapters-list > li.chapter-container').each((i, element) => {
+        // --- SELECTORES CORREGIDOS SEGÚN TU HTML ---
+        // Buscamos el div con id="chapters" y luego la lista dentro
+        const chapterContainer = $('div#chapters > ul.list-group');
+        // Iteramos sobre los elementos colapsables (li.upload-link)
+        chapterContainer.find('li.upload-link').each((i, element) => {
             const row = $(element);
-            const h4Text = $('h4.text-truncate', row).text().trim();
-            const chapNumMatch = h4Text.match(/Capítulo\s+([\d\.]+)/);
+            // Nombre del capítulo (ej: "Capítulo 1.00")
+            const titleElement = row.find('h4 div.col-10 a.btn-collapse');
+            const chapterNameFull = titleElement.text().trim();
+            // Extraer número con regex
+            const chapNumMatch = chapterNameFull.match(/Cap[íi]tulo\s+([\d\.]+)/i);
             const chapNum = chapNumMatch ? parseFloat(chapNumMatch[1]) : 0;
-            const uploadList = $('ul.chapter-list > li.list-group-item', row);
-            uploadList.each((j, upload) => {
+            // Ahora buscamos la lista anidada (las subidas de los fansubs)
+            // Está dentro de un div con id dinámico, pero podemos buscar por clase .chapter-list
+            const uploads = row.find('ul.chapter-list > li.list-group-item');
+            uploads.each((j, upload) => {
                 const up = $(upload);
-                const groupA = $('div.col-4.col-md-6 > span > a', up);
+                // Grupo (Scan)
+                const groupA = up.find('div.col-md-6 a'); // Ajustado a col-md-6
                 const groupName = groupA.text().trim() || "Desconocido";
-                const dateBadge = $('span.badge-primary', up).text().trim();
-                const dateMatch = dateBadge.match(/(\d{4}-\d{2}-\d{2})/);
+                // Fecha
+                const dateBadge = up.find('span.badge.badge-primary');
+                const dateText = dateBadge.text().trim();
+                const dateMatch = dateText.match(/(\d{4}-\d{2}-\d{2})/);
                 const time = dateMatch ? new Date(dateMatch[1]) : new Date();
-                const href = $('a.btn-default', up).attr('href') || '';
+                // Enlace y ID
+                const linkBtn = up.find('div.text-right a.btn-default');
+                const href = linkBtn.attr('href') || '';
+                // Extraer ID de la URL (ej: zonatmo.com/view_uploads/1689945 -> 1689945)
                 const uploadId = href.split('/').pop() || '';
                 if (uploadId) {
                     chapters.push(createChapter({
                         id: uploadId,
                         mangaId: mangaId,
-                        name: h4Text + ` [${groupName}]`,
+                        name: chapterNameFull,
                         chapNum: chapNum,
                         time: time,
                         langCode: "es",
@@ -21738,50 +21751,36 @@ class ZonaTMO extends types_1.Source {
                 }
             });
         });
-        return chapters.reverse();
+        return chapters; // TMO suele darlos en orden descendente, no hace falta reverse si queremos el más nuevo arriba
     }
-    // 3. Chapter Details (CORREGIDO)
     async getChapterDetails(mangaId, chapterId) {
-        // La URL de carga inicial
         const uploadUrl = `${BASE_URL}/view_uploads/${chapterId}`;
         const request = createRequestObject({ url: uploadUrl, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
         let viewerUrl = '';
-        // --- ESTRATEGIA 1: Redirección automática por JavaScript ---
-        // ZonaTMO a veces usa un script que hace window.location.href = "..."
+        // 1. Redirección JS
         const scripts = $('script').map((i, el) => $(el).html()).get().join(' ');
         const locationMatch = scripts.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/);
-        if (locationMatch && locationMatch[1]) {
+        if (locationMatch && locationMatch[1])
             viewerUrl = locationMatch[1];
-        }
-        // --- ESTRATEGIA 2: Método antiguo (copyToClipboard) ---
+        // 2. Botón directo
+        if (!viewerUrl)
+            viewerUrl = $('.flex-row a.btn-social').attr('href') || '';
+        // 3. Método antiguo (onclick)
         if (!viewerUrl) {
             const onclick = $('.flex-row button.btn-social').attr('onclick') || '';
             const match = onclick.match(/copyToClipboard\(['"`](.*)['"`]\)/i);
-            if (match && match[1]) {
+            if (match && match[1])
                 viewerUrl = match[1];
-            }
         }
-        // --- ESTRATEGIA 3: Botón directo ---
-        if (!viewerUrl) {
-            // A veces el enlace está directamente en el href de un botón
-            viewerUrl = $('.flex-row a.btn-social').attr('href') || '';
-        }
-        if (!viewerUrl) {
-            // Log para debuggear si falla
-            throw new Error(`Failed to parse viewer URL for chapter ${chapterId}. Response size: ${response.data.length}`);
-        }
-        // Fix común: cambiar modo paginado a cascada
-        if (viewerUrl.includes("paginated")) {
+        if (!viewerUrl)
+            throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
+        if (viewerUrl.includes("paginated"))
             viewerUrl = viewerUrl.replace("paginated", "cascade");
-        }
-        // Asegurar URL absoluta
-        if (viewerUrl.startsWith('/')) {
+        if (viewerUrl.startsWith('/'))
             viewerUrl = `${BASE_URL}${viewerUrl}`;
-        }
-        // Petición al visor real de imágenes
         const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
         const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
         const viewer$ = cheerio.load(viewerResponse.data);
@@ -21790,9 +21789,8 @@ class ZonaTMO extends types_1.Source {
         viewer$('div.img-container > img.viewer-img').each((i, element) => {
             const el = viewer$(element);
             let imgUrl = el.attr('data-src') || el.attr('src') || '';
-            if (imgUrl) {
+            if (imgUrl)
                 pages.push(imgUrl.trim());
-            }
         });
         return createChapterDetails({
             id: chapterId,
@@ -21800,7 +21798,6 @@ class ZonaTMO extends types_1.Source {
             pages: pages,
         });
     }
-    // 4. Search
     async getSearchResults(query, metadata) {
         const page = metadata?.page ?? 1;
         const term = encodeURIComponent(query.title ?? "");
@@ -21811,12 +21808,8 @@ class ZonaTMO extends types_1.Source {
         this.CloudFlareError(response.status, $);
         const tiles = this.parseHomeSection($, BASE_URL);
         const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
-        return createPagedResults({
-            results: tiles,
-            metadata: nextPage
-        });
+        return createPagedResults({ results: tiles, metadata: nextPage });
     }
-    // 5. Home Page Sections
     async getHomePageSections(sectionCallback) {
         // Popular
         const popularUrl = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=1&filter_by=title`;
@@ -21833,7 +21826,7 @@ class ZonaTMO extends types_1.Source {
         sectionCallback(popularSection);
         popularSection.items = this.parseHomeSection(popular$, BASE_URL).slice(0, 10);
         sectionCallback(popularSection);
-        // Latest Added
+        // Latest
         const latestUrl = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=1&filter_by=title`;
         const latestRequest = createRequestObject({ url: latestUrl, method: "GET" });
         const latestResponse = await this.requestManager.schedule(latestRequest, 1);
@@ -21849,29 +21842,22 @@ class ZonaTMO extends types_1.Source {
         latestSection.items = this.parseHomeSection(latest$, BASE_URL).slice(0, 10);
         sectionCallback(latestSection);
     }
-    // View More
     async getViewMoreItems(homepageSectionId, metadata) {
         const page = metadata?.page ?? 1;
         let url = '';
-        if (homepageSectionId === 'popular') {
+        if (homepageSectionId === 'popular')
             url = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=${page}&filter_by=title`;
-        }
-        else if (homepageSectionId === 'latest_added') {
+        else if (homepageSectionId === 'latest_added')
             url = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=${page}&filter_by=title`;
-        }
-        else {
+        else
             return createPagedResults({ results: [] });
-        }
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
         const $ = cheerio.load(response.data);
         this.CloudFlareError(response.status, $);
         const tiles = this.parseHomeSection($, BASE_URL);
         const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
-        return createPagedResults({
-            results: tiles,
-            metadata: nextPage
-        });
+        return createPagedResults({ results: tiles, metadata: nextPage });
     }
 }
 exports.ZonaTMO = ZonaTMO;
