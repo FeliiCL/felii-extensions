@@ -21583,7 +21583,7 @@ const types_1 = require("@paperback/types");
 const cheerio = __importStar(require("cheerio"));
 const BASE_URL = "https://zonatmo.com";
 exports.info = {
-    version: '1.3.5',
+    version: '1.3.6',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
@@ -21634,7 +21634,7 @@ class ZonaTMO extends types_1.Source {
         const manga = [];
         $('div.row > div.element').each((i, elem) => {
             const a = $('a', elem).first();
-            const title = $('h4.text-truncate', a).text().trim();
+            const title = $('h4.text-truncate', a).attr('title')?.trim() || '';
             const href = a.attr('href')?.trim() || '';
             const mangaId = href.replace(`${baseUrl}/library/`, '');
             const styleText = $('style', elem).text();
@@ -21660,17 +21660,17 @@ class ZonaTMO extends types_1.Source {
         const response = await this.requestManager.schedule(request, 1);
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
-        const title = $('h1.element-title').text().replace(/\(.*\)/, '').trim() || "Sin título";
+        const title = $('h1.element-title').contents().first().text().trim() || "Sin título";
         const image = $('img.book-thumbnail').attr('src') || "";
         const desc = $('p.element-description').text().trim() || "Sin descripción";
         let status = 0; // ONGOING
         const statusText = $('span.book-status').text().toLowerCase().trim();
-        if (statusText.includes("finalizado"))
+        if (statusText === "finalizado")
             status = 1;
-        else if (statusText.includes("pausado"))
+        else if (statusText === "pausado")
             status = 2;
         const tags = [];
-        $('a.badge.badge-primary').each((i, el) => {
+        $('h6 a.badge.badge-primary').each((i, el) => {
             const label = $(el).text().trim();
             if (label)
                 tags.push(createTag({ id: label, label, type: 'blue' }));
@@ -21696,7 +21696,7 @@ class ZonaTMO extends types_1.Source {
         this.CloudFlareError(response.status);
         const $ = cheerio.load(response.data);
         const chapters = [];
-        $('ul.list-group-flush > li.upload-link').each((i, element) => {
+        $('ul.main.version-chaps > li.chapter-container').each((i, element) => {
             const row = $(element);
             const h4Text = $('h4.text-truncate', row).text().trim();
             const chapNumMatch = h4Text.match(/Capítulo (\d+\.?\d*)/);
@@ -21704,10 +21704,11 @@ class ZonaTMO extends types_1.Source {
             const uploadList = $('ul.chapter-list > li.list-group-item', row);
             uploadList.each((j, upload) => {
                 const up = $(upload);
-                const groupName = $('div.col-4.col-md-6 > span > a', up).text().trim() || "Desconocido";
-                const dateMatch = $('span.badge-primary', up).text().match(/(\d{4}-\d{2}-\d{2})/);
-                const dateStr = dateMatch ? dateMatch[1] : '';
-                const time = dateStr ? new Date(dateStr) : new Date();
+                const groupA = $('div.col-4.col-md-6 > span > a', up);
+                const groupName = groupA.text().trim() || "Desconocido";
+                const dateBadge = $('span.badge-primary', up).text().trim();
+                const dateMatch = dateBadge.match(/(\d{4}-\d{2}-\d{2})/);
+                const time = dateMatch ? new Date(dateMatch[1]) : new Date();
                 const href = $('a.btn-default', up).attr('href') || '';
                 const uploadId = href.split('/').pop() || '';
                 if (uploadId) {
@@ -21753,7 +21754,7 @@ class ZonaTMO extends types_1.Source {
         viewer$('div.img-container > img.viewer-img').each((i, element) => {
             const el = viewer$(element);
             let imgUrl = el.attr('data-src') || el.attr('src') || '';
-            if (imgUrl.includes('img1tmo.com') || imgUrl.includes('uploads')) {
+            if (imgUrl) {
                 pages.push(imgUrl.trim());
             }
         });
