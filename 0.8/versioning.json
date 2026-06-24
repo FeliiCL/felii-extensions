@@ -26,6 +26,19 @@
       "tags": [],
       "websiteBaseURL": "https://zonatmo.com",
       "intents": 21
+    },
+    {
+      "id": "VortexScans",
+      "name": "VortexScans",
+      "author": "Felii",
+      "desc": "Lectura desde VortexScans",
+      "website": "http://github.com/feliicl",
+      "contentRating": "MATURE",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "tags": [],
+      "websiteBaseURL": "https://vortexscans.org",
+      "intents": 5
     }
   ],
   "builtWith": {
