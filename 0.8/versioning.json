@@ -39,6 +39,19 @@
       "tags": [],
       "websiteBaseURL": "https://vortexscans.org",
       "intents": 5
+    },
+    {
+      "id": "HiveToons",
+      "name": "HiveToons",
+      "author": "Felii",
+      "desc": "Lectura desde HiveToons (hivetoons.org)",
+      "website": "http://github.com/feliicl",
+      "contentRating": "MATURE",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "tags": [],
+      "websiteBaseURL": "https://hivetoons.org",
+      "intents": 5
     }
   ],
   "builtWith": {
