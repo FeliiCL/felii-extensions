@@ -460,11 +460,27 @@ __exportStar(require("./compat/DyamicUI"), exports);
 },{"./base/index":7,"./compat/DyamicUI":16,"./generated/_exports":60}],62:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ManhwaWeb = void 0;
+exports.ManhwaWeb = exports.ManhwaWebInfo = void 0;
 const types_1 = require("@paperback/types");
 // URLs Base
 const API_URL = "https://manhwawebbackend-production.up.railway.app";
 const WEB_URL = "https://manhwaweb.com";
+// Constantes reutilizables
+const FALLBACK_COVER = "https://placehold.co/400x600?text=No+Cover";
+const USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1";
+const SEE_CACHE_TTL = 60000; // 1 min
+const SEE_CACHE_MAX = 50;
+exports.ManhwaWebInfo = {
+    version: '1.2.0',
+    name: 'ManhwaWeb',
+    icon: 'icon.png',
+    author: 'Felii',
+    authorWebsite: 'https://github.com/FeliiCL',
+    description: 'Lectura directa desde ManhwaWeb con API rápida',
+    contentRating: types_1.ContentRating.MATURE,
+    websiteBaseURL: WEB_URL,
+    intents: types_1.SourceIntents.MANGA_CHAPTERS | types_1.SourceIntents.HOMEPAGE_SECTIONS
+};
 class ManhwaWeb extends types_1.Source {
     constructor() {
         super(...arguments);
@@ -477,7 +493,7 @@ class ManhwaWeb extends types_1.Source {
                         ...(request.headers ?? {}),
                         "Origin": WEB_URL,
                         "Referer": `${WEB_URL}/`,
-                        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+                        "User-Agent": USER_AGENT,
                         "Accept": "application/json, text/plain, */*",
                         "Cache-Control": "no-cache",
                         "Pragma": "no-cache",
@@ -491,184 +507,154 @@ class ManhwaWeb extends types_1.Source {
                 },
             },
         });
+        // Caché del endpoint /manhwa/see/{id}, compartido por getMangaDetails y getChapters
+        this.seeCache = new Map();
     }
-    // Helper: Get ID
-    getIdFromItem(item) {
-        return item.real_id || item._id || "";
-    }
-    // 1. Manga Details
-    async getMangaDetails(mangaId) {
-        const request = createRequestObject({
-            url: `${API_URL}/manhwa/see/${mangaId}`,
-            method: "GET"
-        });
+    // --- Helpers ---
+    // Petición GET + validación de status + parseo JSON (centraliza el manejo de errores)
+    async fetchJson(url) {
+        const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        let data;
+        if (response.status < 200 || response.status >= 300) {
+            throw new Error(`La petición falló (${response.status}): ${url}`);
+        }
         try {
-            data = JSON.parse(response.data);
+            return JSON.parse(response.data);
         }
         catch (e) {
-            throw new Error(`Error parsing JSON for manga details: ${e}`);
+            throw new Error(`Error al parsear JSON de ${url}: ${e}`);
         }
-        const title = data.the_real_name || data.name_esp || data._name || "Sin título";
-        const image = data._imagen || "https://placehold.co/400x600?text=No+Cover";
+    }
+    // Obtiene el detalle de una obra con caché (evita dos llamadas al abrir un manga)
+    async getSee(mangaId) {
+        const now = Date.now();
+        const cached = this.seeCache.get(mangaId);
+        if (cached && cached.expiry > now)
+            return cached.data;
+        const data = await this.fetchJson(`${API_URL}/manhwa/see/${mangaId}`);
+        if (this.seeCache.size >= SEE_CACHE_MAX)
+            this.seeCache.clear();
+        this.seeCache.set(mangaId, { data, expiry: now + SEE_CACHE_TTL });
+        return data;
+    }
+    getIdFromItem(item) {
+        return item.real_id || item._id || item.id_manhwa || (item.link ? item.link.split('/').filter(Boolean).pop() ?? "" : "") || "";
+    }
+    pickTitle(item) {
+        return item.the_real_name || item.name_esp || item._name || item.name || item.name_manhwa || "Sin título";
+    }
+    pickImage(item) {
+        return item._imagen || item.imagen || item.img || FALLBACK_COVER;
+    }
+    buildTile(id, item) {
+        return createMangaTile({
+            id,
+            title: createIconText({ text: this.pickTitle(item) }),
+            image: this.pickImage(item)
+        });
+    }
+    // Mapea el estado textual de la API al enum numérico de Paperback
+    mapStatus(statusText) {
+        const s = (statusText || "").toLowerCase();
+        if (s.includes("finalizado"))
+            return 1; // COMPLETED
+        if (s.includes("pausado"))
+            return 2; // HIATUS
+        return 0; // ONGOING
+    }
+    // 1. Detalles del manga
+    async getMangaDetails(mangaId) {
+        const data = await this.getSee(mangaId);
+        const title = this.pickTitle(data);
+        const image = data._imagen || FALLBACK_COVER;
         const desc = data._sinopsis || "Sin descripción disponible.";
-        let status = 0; // ONGOING
-        const statusText = (data._status || "").toLowerCase();
-        if (statusText.includes("finalizado"))
-            status = 1; // COMPLETED
-        else if (statusText.includes("pausado"))
-            status = 2; // HIATUS
-        // Author from extras
         const author = data._extras?.autores?.join(', ') || "Desconocido";
-        // Tags/Genres
         const tags = [];
-        if (data._categoris && Array.isArray(data._categoris)) {
-            data._categoris.forEach((cat) => {
+        if (Array.isArray(data._categoris)) {
+            for (const cat of data._categoris) {
                 const key = Object.keys(cat)[0];
-                tags.push(createTag({ id: key, label: cat[key], type: 'blue' }));
-            });
+                if (key)
+                    tags.push(createTag({ id: key, label: cat[key] ?? key, type: 'blue' }));
+            }
         }
         if (data._demografi)
             tags.push(createTag({ id: data._demografi, label: data._demografi.toUpperCase(), type: 'green' }));
         if (data._tipo)
             tags.push(createTag({ id: data._tipo, label: data._tipo.toUpperCase(), type: 'yellow' }));
-        const tagSections = [createTagSection({ id: '0', label: 'Géneros', tags })];
         return createManga({
             id: mangaId,
             titles: [title],
             image: image,
             rating: 0,
-            status: status,
+            status: this.mapStatus(data._status),
             author: author,
             desc: desc,
             hentai: data._erotico === "si",
             lastUpdate: data._creation ? new Date(data._creation) : new Date(),
-            tags: tagSections
+            tags: [createTagSection({ id: '0', label: 'Géneros', tags })]
         });
     }
-    // 2. Chapters
+    // 2. Capítulos
     async getChapters(mangaId) {
-        const request = createRequestObject({
-            url: `${API_URL}/manhwa/see/${mangaId}`,
-            method: "GET",
-        });
-        const response = await this.requestManager.schedule(request, 1);
-        let data;
-        try {
-            data = JSON.parse(response.data);
-        }
-        catch (e) {
-            throw new Error(`Error parsing JSON for chapters: ${e}`);
-        }
-        const rawChapters = data.chapters || [];
+        const data = await this.getSee(mangaId);
+        const rawChapters = data.chapters ?? [];
         const chapters = [];
         for (const ch of rawChapters) {
             let chId = "";
             if (ch.link) {
-                const parts = ch.link.split('/').filter((p) => p.length > 0);
-                chId = parts[parts.length - 1];
+                chId = ch.link.split('/').filter(Boolean).pop() ?? "";
             }
-            if (!chId) {
+            if (!chId)
                 chId = `${mangaId}-${ch.chapter}`;
-            }
             chapters.push(createChapter({
                 id: chId,
                 mangaId: mangaId,
                 name: `Capítulo ${ch.chapter}`,
-                chapNum: parseFloat(ch.chapter) || 0,
+                chapNum: parseFloat(String(ch.chapter)) || 0,
                 time: ch.create ? new Date(ch.create) : new Date(),
-                langCode: "🇪🇸",
+                langCode: "es",
             }));
         }
-        // Reverse for latest first
+        // Más reciente primero
         return chapters.reverse();
     }
-    // 3. Chapter Details (Images)
+    // 3. Páginas del capítulo
     async getChapterDetails(mangaId, chapterId) {
-        const request = createRequestObject({
-            url: `${API_URL}/chapters/see/${chapterId}`,
-            method: "GET",
-        });
-        const response = await this.requestManager.schedule(request, 1);
-        let data;
-        try {
-            data = JSON.parse(response.data);
-        }
-        catch (e) {
-            throw new Error(`Error parsing JSON for chapter details: ${e}`);
-        }
-        let pages = [];
-        if (data.chapter && Array.isArray(data.chapter.img)) {
-            pages = data.chapter.img;
-        }
+        const data = await this.fetchJson(`${API_URL}/chapters/see/${chapterId}`);
+        const pages = Array.isArray(data.chapter?.img) ? data.chapter.img : [];
         return createChapterDetails({
             id: chapterId,
             mangaId: mangaId,
             pages: pages,
         });
     }
-    // 4. Search
+    // 4. Búsqueda
     async getSearchResults(query, metadata) {
         const page = metadata?.page ?? 0;
         const term = encodeURIComponent(query.title ?? "");
-        const request = createRequestObject({
-            url: `${API_URL}/manhwa/library?buscar=${term}&estado=&tipo=&erotico=&demografia=&order_item=alfabetico&order_dir=desc&page=${page}&generes=`,
-            method: "GET"
-        });
-        const response = await this.requestManager.schedule(request, 1);
-        let data;
-        try {
-            data = JSON.parse(response.data);
-        }
-        catch (e) {
-            throw new Error(`Error parsing JSON for search: ${e}`);
-        }
-        const results = data.data || [];
-        const tiles = [];
-        for (const item of results) {
-            tiles.push(createMangaTile({
-                id: this.getIdFromItem(item),
-                title: createIconText({ text: item.the_real_name || item.name_esp || item._name || "Sin título" }),
-                image: item._imagen || "https://placehold.co/400x600?text=No+Cover"
-            }));
-        }
-        const nextPage = data.next ? { page: page + 1 } : undefined;
+        const url = `${API_URL}/manhwa/library?buscar=${term}&estado=&tipo=&erotico=&demografia=&order_item=alfabetico&order_dir=desc&page=${page}&generes=`;
+        const data = await this.fetchJson(url);
+        const results = data.data ?? [];
+        const tiles = results.map((item) => this.buildTile(this.getIdFromItem(item), item));
         return createPagedResults({
             results: tiles,
-            metadata: nextPage
+            metadata: data.next ? { page: page + 1 } : undefined
         });
     }
-    // 5. Home Page Sections (Using /manhwa/nuevos for better sections)
+    // 5. Secciones de la página principal (/manhwa/nuevos)
     async getHomePageSections(sectionCallback) {
-        const request = createRequestObject({
-            url: `${API_URL}/manhwa/nuevos`,
-            method: "GET",
-        });
-        const response = await this.requestManager.schedule(request, 1);
-        let data;
-        try {
-            data = JSON.parse(response.data);
-        }
-        catch (e) {
-            throw new Error(`Error parsing JSON for home: ${e}`);
-        }
-        // New Works (utimos_mangas_creados - recent added)
+        const data = await this.fetchJson(`${API_URL}/manhwa/nuevos`);
+        // Nuevas Obras
         const newSection = createHomeSection({
             id: 'new_works',
             title: 'Nuevas Obras',
             type: types_1.HomeSectionType.singleRowNormal,
-            view_more: false // No pagination here
+            view_more: false
         });
         sectionCallback(newSection);
-        const newTiles = (data.utimos_mangas_creados || []).map((item) => createMangaTile({
-            id: this.getIdFromItem(item),
-            title: createIconText({ text: item.the_real_name || 'Sin título' }),
-            image: item._imagen || 'https://placehold.co/400x600?text=No+Cover'
-        }));
-        newSection.items = newTiles;
+        newSection.items = (data.utimos_mangas_creados ?? []).map((item) => this.buildTile(this.getIdFromItem(item), item));
         sectionCallback(newSection);
-        // Popular (top.manhwas_esp - by views)
+        // Lo más leído
         const popularSection = createHomeSection({
             id: 'popular',
             title: 'Lo más leído',
@@ -676,20 +662,9 @@ class ManhwaWeb extends types_1.Source {
             view_more: false
         });
         sectionCallback(popularSection);
-        const popularTiles = (data.top?.manhwas_esp || []).map((item) => {
-            let id = this.getIdFromItem(item);
-            if (!id && item.link) {
-                id = item.link.split('/').pop() || '';
-            }
-            return createMangaTile({
-                id,
-                title: createIconText({ text: item.name || 'Sin título' }),
-                image: item.imagen || 'https://placehold.co/400x600?text=No+Cover'
-            });
-        });
-        popularSection.items = popularTiles;
+        popularSection.items = (data.top?.manhwas_esp ?? []).map((item) => this.buildTile(this.getIdFromItem(item), item));
         sectionCallback(popularSection);
-        // Latest Updates (manhwas.manhwas_esp - recent chapters)
+        // Nuevos Capítulos (deduplicado por manga)
         const latestSection = createHomeSection({
             id: 'latest_updates',
             title: 'Nuevos Capítulos',
@@ -697,27 +672,17 @@ class ManhwaWeb extends types_1.Source {
             view_more: false
         });
         sectionCallback(latestSection);
-        const seenIds = new Set(); // Dedupe by manga id
-        const latestTiles = (data.manhwas?.manhwas_esp || []).filter((item) => {
+        const seen = new Set();
+        latestSection.items = (data.manhwas?.manhwas_esp ?? [])
+            .filter((item) => {
             const id = item.id_manhwa || '';
-            if (seenIds.has(id))
+            if (!id || seen.has(id))
                 return false;
-            seenIds.add(id);
+            seen.add(id);
             return true;
-        }).map((item) => createMangaTile({
-            id: item.id_manhwa || '',
-            title: createIconText({ text: item.name_manhwa || 'Sin título' }),
-            image: item.img || 'https://placehold.co/400x600?text=No+Cover'
-        }));
-        latestSection.items = latestTiles;
+        })
+            .map((item) => this.buildTile(item.id_manhwa || '', item));
         sectionCallback(latestSection);
-    }
-    // View More - For library-based pagination if needed, but since home uses nuevos, skip or implement for a 'all' section
-    async getViewMoreItems(homepageSectionId, metadata) {
-        // If adding a paginated section, implement here based on id
-        return createPagedResults({
-            results: []
-        });
     }
 }
 exports.ManhwaWeb = ManhwaWeb;
