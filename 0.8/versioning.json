@@ -15,19 +15,6 @@
       "intents": 5
     },
     {
-      "id": "ZonaTMO",
-      "name": "ZonaTMO",
-      "author": "Felii",
-      "desc": "Lectura desde ZonaTMO",
-      "website": "http://github.com/feliicl",
-      "contentRating": "MATURE",
-      "version": "1.4.0",
-      "icon": "icon.png",
-      "tags": [],
-      "websiteBaseURL": "https://zonatmo.com",
-      "intents": 21
-    },
-    {
       "id": "VortexScans",
       "name": "VortexScans",
       "author": "Felii",
