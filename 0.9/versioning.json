@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-07-18T03:17:15.098Z",
+  "buildTime": "2026-07-18T04:04:29.671Z",
   "builtWith": {
     "toolchain": "1.0.0-alpha.92",
     "types": "1.0.0-alpha.92"
@@ -9,6 +9,33 @@
     "description": "Felii extensions for Paperback 0.9"
   },
   "sources": [
+    {
+      "name": "AsuraScans",
+      "description": "Read manhwa from Asura Scans (asurascans.com)",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "en",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Manhwa",
+          "textColor": "#ffffff",
+          "backgroundColor": "#7c3aed"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "AsuraScans"
+    },
     {
       "name": "HiveToons",
       "description": "Read webtoons from HiveToons (hivetoons.org)",
@@ -66,6 +93,33 @@
       "id": "ManhwaWeb"
     },
     {
+      "name": "Olympus",
+      "description": "Lectura desde Olympus Scanlation (olympusxyz.com)",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "es",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Español",
+          "textColor": "#ffffff",
+          "backgroundColor": "#2563eb"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "Olympus"
+    },
+    {
       "name": "VortexScans",
       "description": "Read webtoons from VortexScans (vortexscans.org)",
       "version": "1.1.0",
@@ -92,6 +146,34 @@
         }
       ],
       "id": "VortexScans"
+    },
+    {
+      "name": "Webtoons",
+      "description": "Webtoons oficial (webtoons.com) — ES/EN configurable en ajustes",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "multi",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1,
+        32
+      ],
+      "badges": [
+        {
+          "label": "Oficial",
+          "textColor": "#ffffff",
+          "backgroundColor": "#00d564"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "Webtoons"
     },
     {
       "name": "ZonaTMO",
