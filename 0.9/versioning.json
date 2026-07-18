@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-07-18T01:57:33.982Z",
+  "buildTime": "2026-07-18T02:11:39.911Z",
   "builtWith": {
     "toolchain": "1.0.0-alpha.92",
     "types": "1.0.0-alpha.92"
@@ -35,6 +35,60 @@
         }
       ],
       "id": "HiveToons"
+    },
+    {
+      "name": "ManhwaWeb",
+      "description": "Lectura directa desde ManhwaWeb con API rápida",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "es",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Español",
+          "textColor": "#ffffff",
+          "backgroundColor": "#2563eb"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "ManhwaWeb"
+    },
+    {
+      "name": "VortexScans",
+      "description": "Lectura desde VortexScans (vortexscans.org)",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "en",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Webtoon",
+          "textColor": "#ffffff",
+          "backgroundColor": "#e11d48"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "VortexScans"
     }
   ]
 }
