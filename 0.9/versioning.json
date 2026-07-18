@@ -1,0 +1,40 @@
+{
+  "buildTime": "2026-07-18T01:57:33.982Z",
+  "builtWith": {
+    "toolchain": "1.0.0-alpha.92",
+    "types": "1.0.0-alpha.92"
+  },
+  "repository": {
+    "name": "felii-extensions-0.9",
+    "description": "Felii extensions for Paperback 0.9"
+  },
+  "sources": [
+    {
+      "name": "HiveToons",
+      "description": "Lectura desde HiveToons (hivetoons.org)",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "en",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Webtoon",
+          "textColor": "#ffffff",
+          "backgroundColor": "#e11d48"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "HiveToons"
+    }
+  ]
+}
