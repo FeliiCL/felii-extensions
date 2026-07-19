@@ -1,0 +1,14 @@
+
+.code-review-graph/
+
+.claude/
+.mcp.json
+
+Sistema operativo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+*.log
+__pycache__/
+node_modules/
