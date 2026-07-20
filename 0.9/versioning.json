@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-07-19T17:01:56.138Z",
+  "buildTime": "2026-07-20T02:10:53.799Z",
   "builtWith": {
     "toolchain": "1.0.0-alpha.92",
     "types": "1.0.0-alpha.92"
@@ -118,6 +118,38 @@
         }
       ],
       "id": "Olympus"
+    },
+    {
+      "name": "Topcur Traducciones",
+      "description": "Novelas ligeras en español de Topcur (animerikosuper.blogspot.com)",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "es",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Novelas",
+          "textColor": "#ffffff",
+          "backgroundColor": "#7c3aed"
+        },
+        {
+          "label": "Español",
+          "textColor": "#ffffff",
+          "backgroundColor": "#2563eb"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "Topcur"
     },
     {
       "name": "VortexScans",
