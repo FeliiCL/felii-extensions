@@ -1,0 +1,19 @@
+{
+  "name": "felii-extensions-0.9",
+  "version": "1.0.0",
+  "repositoryName": "Felii Extensions (0.9)",
+  "description": "Felii extensions for Paperback 0.9",
+  "type": "module",
+  "scripts": {
+    "bundle": "paperback-cli bundle",
+    "serve": "paperback-cli serve",
+    "test": "paperback-cli test"
+  },
+  "author": "Felii",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@paperback/toolchain": "1.0.0-alpha.92",
+    "@paperback/types": "1.0.0-alpha.92",
+    "cheerio": "1.0.0-rc.12"
+  }
+}
