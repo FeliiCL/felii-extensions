@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-07-20T02:52:25.383Z",
+  "buildTime": "2026-07-21T21:20:15.148Z",
   "builtWith": {
     "toolchain": "1.0.0-alpha.92",
     "types": "1.0.0-alpha.92"
@@ -63,6 +63,33 @@
         }
       ],
       "id": "HiveToons"
+    },
+    {
+      "name": "MangaOni",
+      "description": "Lectura desde MangaOni (manga-oni.com)",
+      "version": "1.0.0",
+      "icon": "icon.png",
+      "language": "es",
+      "contentRating": "MATURE",
+      "capabilities": [
+        4,
+        64,
+        1
+      ],
+      "badges": [
+        {
+          "label": "Español",
+          "textColor": "#ffffff",
+          "backgroundColor": "#2563eb"
+        }
+      ],
+      "developers": [
+        {
+          "name": "Felii",
+          "github": "https://github.com/FeliiCL"
+        }
+      ],
+      "id": "MangaOni"
     },
     {
       "name": "ManhwaWeb",

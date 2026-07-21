@@ -28,13 +28,13 @@ gets back into the typed schema Paperback expects (`SourceManga`, `Chapter`,
 `ChapterDetails`, `SearchResultItem`, `DiscoverSection`). The site is the input, a stable
 typed contract is the output — the adapter absorbs the difference.
 
-Eight sources for 0.9, ~3,400 lines of TypeScript. Two parsing strategies depending on
+Nine sources for 0.9, ~3,800 lines of TypeScript. Two parsing strategies depending on
 what the site actually exposes:
 
 | Source | Strategy |
 |---|---|
 | AsuraScans, ManhwaWeb, Olympus | JSON API |
-| HiveToons, Topcur, VortexScans, Webtoons, ZonaTMO | HTML parsing with `cheerio` |
+| HiveToons, MangaOni, Topcur, VortexScans, Webtoons, ZonaTMO | HTML parsing with `cheerio` |
 
 Every source implements the same shape:
 
