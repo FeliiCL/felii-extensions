@@ -13,28 +13,35 @@ import {
     SourceIntents,
     HomeSectionType,
     MangaTile,
-    TagSection,
     Tag
 } from '@paperback/types';
 
 import * as cheerio from 'cheerio';
 
-const BASE_URL = "https://zonatmo.com";
+// URLs base — zonatmo.org (renacimiento del ZonaTMO/TMO original, misma estructura Laravel)
+const WEB_URL = "https://zonatmo.org";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+// placehold.co sin .png devuelve SVG, que iOS no renderiza
+const FALLBACK_COVER = "https://placehold.co/400x600.png?text=No+Cover";
 
-export const info: SourceInfo = {
-    version: '1.4.0',
+// Caché del HTML de /library/{id} (compartido por getMangaDetails y getChapters)
+const SERIES_CACHE_TTL = 60_000; // 1 min
+const SERIES_CACHE_MAX = 30;
+
+export const ZonaTMOInfo: SourceInfo = {
+    version: '1.5.0',
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
-    description: 'Extension for ZonaTMO',
+    authorWebsite: 'https://github.com/FeliiCL',
+    description: 'Lectura desde ZonaTMO (zonatmo.org)',
     contentRating: ContentRating.MATURE,
-    websiteBaseURL: BASE_URL,
-    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.CLOUDFLARE_BYPASS
+    websiteBaseURL: WEB_URL,
+    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
 };
 
 export class ZonaTMO extends Source {
-    
+
     requestManager = createRequestManager({
         requestsPerSecond: 3,
         requestTimeout: 20000,
@@ -42,8 +49,8 @@ export class ZonaTMO extends Source {
             interceptRequest: async (request: Request): Promise<Request> => {
                 request.headers = {
                     ...(request.headers ?? {}),
-                    "Referer": `${BASE_URL}/`,
-                    "Origin": BASE_URL,
+                    "Referer": `${WEB_URL}/`,
+                    "Origin": WEB_URL,
                     "User-Agent": USER_AGENT,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
                 };
@@ -55,18 +62,20 @@ export class ZonaTMO extends Source {
         },
     });
 
-    getCloudflareBypassRequest() {
+    private seriesCache = new Map<string, { data: string; expiry: number }>();
+
+    override getCloudflareBypassRequest(): Request {
         return createRequestObject({
-            url: BASE_URL,
+            url: WEB_URL,
             method: 'GET',
             headers: {
-                "referer": `${BASE_URL}/`,
+                "referer": `${WEB_URL}/`,
                 "user-agent": USER_AGENT
             }
         });
     }
 
-    CloudFlareError(status: number, $?: cheerio.Root) {
+    CloudFlareError(status: number, $?: cheerio.CheerioAPI): void {
         if (status === 503 || status === 403) {
             throw new Error(`CLOUDFLARE BYPASS ERROR: Please go to the homepage of the source and press Cloudflare Bypass. Status code: ${status}`);
         }
@@ -78,61 +87,137 @@ export class ZonaTMO extends Source {
         }
     }
 
-    parseHomeSection($: cheerio.Root, baseUrl: string): MangaTile[] {
-        const manga: MangaTile[] = [];
-        $('div.row > div.element').each((i, elem) => {
-            const a = $('a', elem).first();
-            const title = $('h4.text-truncate', a).attr('title')?.trim() || '';
-            const href = a.attr('href')?.trim() || '';
-            const mangaId = href.replace(`${baseUrl}/library/`, '');
-            const styleText = $('style', elem).text();
-            const imageMatch = styleText.match(/url\('(.*)'\)/);
-            const image = imageMatch ? imageMatch[1] : '';
+    // ---- fetch helpers ----
 
-            if (mangaId && title && image) {
-                manga.push(createMangaTile({
-                    id: mangaId,
-                    title: createIconText({ text: title }),
-                    image: image
-                }));
-            }
-        });
-        return manga;
-    }
-
-    NextPage($: cheerio.Root): boolean {
-        return $('ul.pagination > li > a[rel="next"]').length > 0;
-    }
-
-    async getMangaDetails(mangaId: string): Promise<Manga> {
-        const url = `${BASE_URL}/library/${mangaId}`;
+    private async fetchHTML(url: string): Promise<{ html: string; $: cheerio.CheerioAPI }> {
         const request = createRequestObject({ url, method: "GET" });
         const response = await this.requestManager.schedule(request, 1);
-        const $ = cheerio.load(response.data);
+        const $ = cheerio.load(response.data ?? "");
         this.CloudFlareError(response.status, $);
+        return { html: response.data ?? "", $ };
+    }
 
-        const titleEl = $('h1.element-title').first();
-        // Limpieza robusta del título
-        const title = titleEl.contents().filter((i, el) => el.type === 'text').text().trim() || titleEl.text().trim();
-        
-        const image = $('img.book-thumbnail').attr('src') || "";
-        const desc = $('p.element-description').text().trim() || "Sin descripción";
+    private async getSeriesHTML(mangaId: string): Promise<string> {
+        const now = Date.now();
+        const cached = this.seriesCache.get(mangaId);
+        if (cached && cached.expiry > now) return cached.data;
 
-        let status = 0; // ONGOING
-        const statusText = $('span.book-status').text().toLowerCase().trim();
-        if (statusText.includes("finalizado")) status = 1;
-        else if (statusText.includes("pausado")) status = 2;
+        const { html } = await this.fetchHTML(`${WEB_URL}/library/${mangaId}`);
+        if (this.seriesCache.size >= SERIES_CACHE_MAX) this.seriesCache.clear();
+        this.seriesCache.set(mangaId, { data: html, expiry: now + SERIES_CACHE_TTL });
+        return html;
+    }
 
-        const tags: Tag[] = [];
-        $('h6 a.badge.badge-primary').each((i, el) => {
-            const label = $(el).text().trim();
-            if (label) tags.push(createTag({ id: label, label, type: 'blue' }));
+    // ---- utils ----
+
+    // Percent-encodea caracteres raros de los slugs (unicode, espacios…);
+    // los backends aceptan el slug encodeado.
+    private toSafeId(id: string): string {
+        return id.replace(/[^A-Za-z0-9._\-@()[\]%?#+=/&:]/g, (c) => {
+            const enc = encodeURIComponent(c);
+            if (enc !== c) return enc;
+            return "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0");
         });
-        
-        const typeLabel = $('h1.element-title small.badge').text().trim();
-        if(typeLabel) tags.push(createTag({ id: typeLabel, label: typeLabel, type: 'default' }));
+    }
 
-        const tagSections = [createTagSection({ id: '0', label: 'Géneros', tags })];
+    // Mapea el estado textual de la web al enum numérico de Paperback
+    mapStatus(statusText: string): number {
+        const s = (statusText || "").toLowerCase();
+        if (s.includes("finalizado") || s.includes("completado")) return 1; // COMPLETED
+        if (s.includes("pausa")) return 2; // HIATUS
+        if (s.includes("cancelado")) return 3; // ABANDONED
+        return 0; // ONGOING
+    }
+
+    // Fechas relativas del listado de capítulos: "1 month ago" / "hace 2 días"
+    parseRelativeDate(text: string): Date | undefined {
+        const t = (text || "").toLowerCase().trim();
+        const m = t.match(/(\d+)\s*(second|segundo|minute|minuto|hour|hora|day|d[ií]a|week|semana|month|mes|year|año|anio)/);
+        if (!m) return undefined;
+        const amount = m[1];
+        const unit = m[2];
+        if (!amount || !unit) return undefined;
+        const n = parseInt(amount, 10) || 0;
+        const MS: Record<string, number> = {
+            second: 1e3, segundo: 1e3,
+            minute: 6e4, minuto: 6e4,
+            hour: 36e5, hora: 36e5,
+            day: 864e5, "día": 864e5, "dia": 864e5,
+            week: 6048e5, semana: 6048e5,
+            month: 26298e5, mes: 26298e5,
+            year: 315576e5, "año": 315576e5, anio: 315576e5,
+        };
+        const ms = MS[unit] ?? MS[unit.replace(/s$/, "")] ?? 0;
+        return ms ? new Date(Date.now() - n * ms) : undefined;
+    }
+
+    // Parsea las cards de /biblioteca (búsqueda y home comparten markup)
+    parseLibraryCards(html: string): MangaTile[] {
+        const $ = cheerio.load(html);
+        const tiles: MangaTile[] = [];
+        const seen = new Set<string>();
+
+        $("div.element").each((_i, el) => {
+            const card = $(el);
+            const href = card.find("a").first().attr("href") || "";
+            const idMatch = href.match(/\/library\/(.+)$/);
+            if (!idMatch) return;
+            const idPath = idMatch[1];
+            if (!idPath) return;
+            const mangaId = this.toSafeId(idPath);
+            if (!mangaId || seen.has(mangaId)) return;
+
+            const title =
+                card.find("h4.text-truncate").attr("title")?.trim() ||
+                card.find("h4.text-truncate").text().trim();
+            const image =
+                card.find("img.cover-bg-img").attr("src") ||
+                card.find("[data-bg]").attr("data-bg") ||
+                FALLBACK_COVER;
+
+            if (!title) return;
+            seen.add(mangaId);
+            tiles.push(createMangaTile({
+                id: mangaId,
+                title: createIconText({ text: title }),
+                image: image
+            }));
+        });
+        return tiles;
+    }
+
+    hasNextPage(html: string): boolean {
+        return /rel="next"/.test(html);
+    }
+
+    // ---- manga details ----
+
+    async getMangaDetails(mangaId: string): Promise<Manga> {
+        const html = await this.getSeriesHTML(mangaId);
+        const $ = cheerio.load(html);
+
+        const titleEl = $("h1.element-title").first();
+        const title =
+            titleEl.contents().filter((_i, el) => el.type === "text").text().trim() ||
+            titleEl.text().trim() ||
+            mangaId;
+
+        const image = $("img.book-thumbnail").attr("src") || FALLBACK_COVER;
+        const desc = $("p.element-description").text().trim() || "Sin descripción disponible.";
+        const status = this.mapStatus($("span.book-status").text());
+
+        // Autor: enlace con filter_by=author
+        const author = $('a[href*="filter_by=author"]').first().text().trim() || "Desconocido";
+
+        // Géneros: badges (enlaces a genders[])
+        const tags: Tag[] = [];
+        $("h6 a.badge.badge-primary").each((_i, el) => {
+            const label = $(el).text().trim();
+            if (label) tags.push(createTag({ id: label.toLowerCase().replace(/\s+/g, "-"), label, type: 'blue' }));
+        });
+        // Tipo (manga/manhwa/...) desde el propio ID
+        const type = mangaId.match(/^([a-z_]+)\//)?.[1];
+        if (type) tags.push(createTag({ id: type, label: type.toUpperCase(), type: 'default' }));
 
         return createManga({
             id: mangaId,
@@ -140,158 +225,72 @@ export class ZonaTMO extends Source {
             image: image,
             rating: 0,
             status: status,
-            author: "Desconocido",
+            author: author,
             desc: desc,
             hentai: false,
-            tags: tagSections
+            tags: [createTagSection({ id: '0', label: 'Géneros', tags })]
         });
     }
 
+    // ---- chapters ----
+
     async getChapters(mangaId: string): Promise<Chapter[]> {
-        const url = `${BASE_URL}/library/${mangaId}`;
-        const request = createRequestObject({ url, method: "GET" });
-        const response = await this.requestManager.schedule(request, 1);
-        const $ = cheerio.load(response.data);
-        this.CloudFlareError(response.status, $);
+        const html = await this.getSeriesHTML(mangaId);
+        const $ = cheerio.load(html);
 
         const chapters: Chapter[] = [];
-        // Selector robusto: busca el contenedor de capítulos por ID
-        const chapterContainer = $('div#chapters');
-        
-        // Iterar sobre cada bloque de capítulo colapsable
-        chapterContainer.find('li.upload-link').each((i, element) => {
-            const row = $(element);
-            
-            // Nombre del capítulo (ej: Capítulo 1.00) - Buscamos el texto dentro del botón de colapso
-            const titleElement = row.find('.btn-collapse');
-            let chapterNameFull = titleElement.text().trim();
-            
-            // Regex flexible para números (soporta "Capítulo 1", "Cap. 1", "1")
-            const chapNumMatch = chapterNameFull.match(/(?:Cap[íi]tulo|Cap\.?)\s*([\d\.]+)/i);
-            const chapNum = chapNumMatch ? parseFloat(chapNumMatch[1]) : 0;
+        const seen = new Set<string>();
 
-            // Iterar sobre las subidas (scans) dentro de este capítulo
-            const uploads = row.find('ul.chapter-list > li.list-group-item');
+        $("li.upload-link").each((_i, el) => {
+            const row = $(el);
 
-            uploads.each((j, upload) => {
-                const up = $(upload);
-                
-                // 1. Grupo (Scan)
-                // Usamos .text-truncate para encontrar la columna del nombre sin importar si es col-4 o col-12
-                const groupContainer = up.find('div.text-truncate');
-                const groupName = groupContainer.find('a').first().text().trim() || "Desconocido";
-                
-                // 2. Fecha
-                const dateText = up.find('span.badge').text().trim();
-                const dateMatch = dateText.match(/(\d{4}-\d{2}-\d{2})/);
-                const time = dateMatch ? new Date(dateMatch[1]) : new Date();
-                
-                // 3. Enlace
-                // Buscamos el botón "Play" o cualquier botón btn-default al final
-                const linkBtn = up.find('a.btn-default').first();
-                const href = linkBtn.attr('href') || '';
-                const uploadId = href.split('/').pop() || '';
+            // Enlace de lectura → id del upload
+            const href = row.find('a[href*="/view_uploads/"]').first().attr("href") || "";
+            const uploadId = href.split("/").filter(Boolean).pop() || "";
+            if (!uploadId || seen.has(uploadId)) return;
 
-                if (uploadId) {
-                    chapters.push(createChapter({
-                        id: uploadId,
-                        mangaId: mangaId,
-                        // Aquí ponemos el emoji 🇪🇸 en el nombre del capítulo
-                        name: `${chapterNameFull} [🇪🇸 ${groupName}]`,
-                        chapNum: chapNum,
-                        time: time,
-                        langCode: "es", // Código interno (no visible en el título)
-                        group: groupName
-                    }));
-                }
-            });
+            // Número de capítulo (attr data-chapter-number, fallback al texto)
+            let chapNum = parseFloat(row.attr("data-chapter-number") || "");
+            const nameText = row.find(".chapter-number").first().text().trim();
+            if (isNaN(chapNum)) {
+                const numText = nameText.match(/(?:cap[íi]tulo|cap\.?)\s*([\d.]+)/i)?.[1];
+                chapNum = numText ? parseFloat(numText) : 0;
+            }
+
+            // Fecha relativa ("1 month ago")
+            const time = this.parseRelativeDate(row.find(".chapter-row-date").first().text()) ?? new Date();
+
+            seen.add(uploadId);
+            chapters.push(createChapter({
+                id: uploadId,
+                mangaId: mangaId,
+                name: nameText || `Capítulo ${chapNum || 0}`,
+                chapNum: chapNum || 0,
+                time: time,
+                langCode: "es"
+            }));
         });
 
+        // Más reciente primero
+        chapters.sort((a, b) => b.chapNum - a.chapNum);
         return chapters;
     }
 
     async getChapterDetails(mangaId: string, chapterId: string): Promise<ChapterDetails> {
-        const uploadUrl = `${BASE_URL}/view_uploads/${chapterId}`;
-        const request = createRequestObject({ url: uploadUrl, method: "GET" });
-        const response = await this.requestManager.schedule(request, 1);
-        const $ = cheerio.load(response.data);
-        this.CloudFlareError(response.status, $);
+        // zonatmo.org sirve las imágenes directamente en /view_uploads/ (sin redirección al visor)
+        const { $ } = await this.fetchHTML(`${WEB_URL}/view_uploads/${chapterId}`);
 
-        let viewerUrl = '';
-        
-        // --- ESTRATEGIA 1: Redirección por JavaScript (window.location) ---
-        // Buscamos en todo el HTML por si está en un script inline
-        const htmlContent = response.data;
-        // Regex mejorada basada en source.js de OnlyFadi
-        const locationMatch = htmlContent.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/);
-        if (locationMatch && locationMatch[1]) {
-            viewerUrl = locationMatch[1];
-        }
-        
-        // --- ESTRATEGIA 2: Redirección por Meta Tag ---
-        if (!viewerUrl) {
-            const metaRefresh = $('meta[http-equiv="refresh"]').attr('content');
-            // content="0; url=https://..."
-            if (metaRefresh) {
-                const urlMatch = metaRefresh.match(/url=(.+)/i);
-                if (urlMatch && urlMatch[1]) {
-                    viewerUrl = urlMatch[1];
-                }
-            }
-        }
-
-        // --- ESTRATEGIA 3: Botón directo o copyToClipboard ---
-        if (!viewerUrl) {
-            // Intentar leer el onclick del botón social (método antiguo)
-            const onclick = $('.flex-row button.btn-social').attr('onclick') || '';
-            const match = onclick.match(/copyToClipboard\(['"`](.*)['"`]\)/i);
-            if (match && match[1]) {
-                viewerUrl = match[1];
-            } else {
-                // Intentar leer el href directo
-                viewerUrl = $('.flex-row a.btn-social').attr('href') || '';
-            }
-        }
-
-        if (!viewerUrl) {
-            // Último recurso: comprobar si la página actual YA tiene las imágenes (a veces pasa)
-            if ($('div.img-container img.viewer-img').length > 0) {
-                 viewerUrl = uploadUrl; // La URL actual es la correcta
-            } else {
-                 throw new Error(`Failed to parse viewer URL for chapter ${chapterId}`);
-            }
-        }
-
-        // Conversión a modo Cascada (Cascade) siempre
-        if (viewerUrl.includes("paginated")) {
-            viewerUrl = viewerUrl.replace("paginated", "cascade");
-        }
-        
-        // Asegurar URL absoluta
-        if (viewerUrl.startsWith('/')) {
-            viewerUrl = `${BASE_URL}${viewerUrl}`;
-        }
-
-        // Si ya estamos en la página de imágenes, no hacemos request extra
-        let viewer$: cheerio.Root;
-        if (viewerUrl === uploadUrl) {
-            viewer$ = $;
-        } else {
-            const viewerRequest = createRequestObject({ url: viewerUrl, method: "GET" });
-            const viewerResponse = await this.requestManager.schedule(viewerRequest, 1);
-            viewer$ = cheerio.load(viewerResponse.data);
-            this.CloudFlareError(viewerResponse.status, viewer$);
-        }
-        
         const pages: string[] = [];
-        viewer$('div.img-container > img.viewer-img').each((i, element) => {
-            const el = viewer$(element);
-            // Prioridad a data-src (lazy loading) luego src
-            let imgUrl = el.attr('data-src') || el.attr('src') || '';
-            if (imgUrl) {
-                pages.push(imgUrl.trim());
-            }
-        });
+        const collect = (_i: number, el: cheerio.Element): void => {
+            const src = ($(el).attr("data-src") || $(el).attr("src") || "").trim();
+            if (src) pages.push(src);
+        };
+
+        $("img.reader-image").each(collect);
+        // Fallback: contenedores del lector
+        if (pages.length === 0) $("div.reader-img-wrap img").each(collect);
+        // Fallback del visor antiguo (cascade)
+        if (pages.length === 0) $("div.img-container img.viewer-img").each(collect);
 
         return createChapterDetails({
             id: chapterId,
@@ -300,29 +299,23 @@ export class ZonaTMO extends Source {
         });
     }
 
+    // ---- search ----
+
     async getSearchResults(query: SearchRequest, metadata: any): Promise<PagedResults> {
         const page = metadata?.page ?? 1;
         const term = encodeURIComponent(query.title ?? "");
-        const url = `${BASE_URL}/library?order_item=alfabetico&order_dir=asc&title=${term}&_pg=${page}&filter_by=title`;
-        const request = createRequestObject({ url, method: "GET" });
-        const response = await this.requestManager.schedule(request, 1);
-        const $ = cheerio.load(response.data);
-        this.CloudFlareError(response.status, $);
+        const { html } = await this.fetchHTML(`${WEB_URL}/biblioteca?title=${term}&filter_by=title&page=${page}`);
 
-        const tiles = this.parseHomeSection($, BASE_URL);
-        const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
+        const tiles = this.parseLibraryCards(html);
+        const nextPage = this.hasNextPage(html) ? { page: page + 1 } : undefined;
 
         return createPagedResults({ results: tiles, metadata: nextPage });
     }
 
-    async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
-        // Popular
-        const popularUrl = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=1&filter_by=title`;
-        const popularRequest = createRequestObject({ url: popularUrl, method: "GET" });
-        const popularResponse = await this.requestManager.schedule(popularRequest, 1);
-        const popular$ = cheerio.load(popularResponse.data);
-        this.CloudFlareError(popularResponse.status, popular$);
+    // ---- home ----
 
+    override async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
+        // Popular
         const popularSection = createHomeSection({
             id: 'popular',
             title: 'Lo más popular',
@@ -330,16 +323,11 @@ export class ZonaTMO extends Source {
             view_more: true
         });
         sectionCallback(popularSection);
-        popularSection.items = this.parseHomeSection(popular$, BASE_URL).slice(0, 10);
+        const popular = await this.fetchHTML(`${WEB_URL}/biblioteca?order_item=likes_count&order_dir=desc&filter_by=title&page=1`);
+        popularSection.items = this.parseLibraryCards(popular.html).slice(0, 10);
         sectionCallback(popularSection);
 
-        // Latest
-        const latestUrl = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=1&filter_by=title`;
-        const latestRequest = createRequestObject({ url: latestUrl, method: "GET" });
-        const latestResponse = await this.requestManager.schedule(latestRequest, 1);
-        const latest$ = cheerio.load(latestResponse.data);
-        this.CloudFlareError(latestResponse.status, latest$);
-
+        // Últimos añadidos
         const latestSection = createHomeSection({
             id: 'latest_added',
             title: 'Últimos añadidos',
@@ -347,24 +335,21 @@ export class ZonaTMO extends Source {
             view_more: true
         });
         sectionCallback(latestSection);
-        latestSection.items = this.parseHomeSection(latest$, BASE_URL).slice(0, 10);
+        const latest = await this.fetchHTML(`${WEB_URL}/biblioteca?order_item=creation&order_dir=desc&filter_by=title&page=1`);
+        latestSection.items = this.parseLibraryCards(latest.html).slice(0, 10);
         sectionCallback(latestSection);
     }
 
-    async getViewMoreItems(homepageSectionId: string, metadata: any): Promise<PagedResults> {
+    override async getViewMoreItems(homepageSectionId: string, metadata: any): Promise<PagedResults> {
         const page = metadata?.page ?? 1;
         let url = '';
-        if (homepageSectionId === 'popular') url = `${BASE_URL}/library?order_item=likes_count&order_dir=desc&_pg=${page}&filter_by=title`;
-        else if (homepageSectionId === 'latest_added') url = `${BASE_URL}/library?order_item=creation&order_dir=desc&_pg=${page}&filter_by=title`;
+        if (homepageSectionId === 'popular') url = `${WEB_URL}/biblioteca?order_item=likes_count&order_dir=desc&filter_by=title&page=${page}`;
+        else if (homepageSectionId === 'latest_added') url = `${WEB_URL}/biblioteca?order_item=creation&order_dir=desc&filter_by=title&page=${page}`;
         else return createPagedResults({ results: [] });
 
-        const request = createRequestObject({ url, method: "GET" });
-        const response = await this.requestManager.schedule(request, 1);
-        const $ = cheerio.load(response.data);
-        this.CloudFlareError(response.status, $);
-
-        const tiles = this.parseHomeSection($, BASE_URL);
-        const nextPage = this.NextPage($) ? { page: page + 1 } : undefined;
+        const { html } = await this.fetchHTML(url);
+        const tiles = this.parseLibraryCards(html);
+        const nextPage = this.hasNextPage(html) ? { page: page + 1 } : undefined;
         return createPagedResults({ results: tiles, metadata: nextPage });
     }
 }
