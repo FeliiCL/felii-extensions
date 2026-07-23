@@ -13,5 +13,5 @@ export default {
         SourceIntents.CHAPTER_PROVIDING,
     ],
     badges: [{ label: "Español", textColor: "#ffffff", backgroundColor: "#2563eb" }],
-    developers: [{ name: "Felii", github: "https://github.com/FeliiCL" }],
+    developers: [{ name: "Felii", github: "https://github.com/feliivk" }],
 } satisfies ExtensionInfo;

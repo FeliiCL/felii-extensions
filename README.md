@@ -5,5 +5,5 @@ My personal repository for [Paperback](https://paperback.moe/).
 
 | Source(s) | Desc | Link |
 | :--- | :---: | :---: |
-| 0.8 | Sources for pb ver 0.8 | [Open](https://feliicl.github.io/felii-extensions/0.8/) |
-| 0.9 | Sources for pb ver 0.9 (beta) | [Open](https://feliicl.github.io/felii-extensions/0.9/) |
+| 0.8 | Sources for pb ver 0.8 | [Open](https://feliivk.github.io/felii-extensions/0.8/) |
+| 0.9 | Sources for pb ver 0.9 (beta) | [Open](https://feliivk.github.io/felii-extensions/0.9/) |

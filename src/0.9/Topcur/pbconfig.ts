@@ -16,5 +16,5 @@ export default {
         { label: "Novelas", textColor: "#ffffff", backgroundColor: "#7c3aed" },
         { label: "Español", textColor: "#ffffff", backgroundColor: "#2563eb" },
     ],
-    developers: [{ name: "Felii", github: "https://github.com/FeliiCL" }],
+    developers: [{ name: "Felii", github: "https://github.com/feliivk" }],
 } satisfies ExtensionInfo;

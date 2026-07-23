@@ -475,7 +475,7 @@ exports.ManhwaWebInfo = {
     name: 'ManhwaWeb',
     icon: 'icon.png',
     author: 'Felii',
-    authorWebsite: 'https://github.com/FeliiCL',
+    authorWebsite: 'https://github.com/feliivk',
     description: 'Lectura directa desde ManhwaWeb con API rápida',
     contentRating: types_1.ContentRating.MATURE,
     websiteBaseURL: WEB_URL,

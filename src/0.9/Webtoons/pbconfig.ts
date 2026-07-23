@@ -14,5 +14,5 @@ export default {
         SourceIntents.SETTINGS_FORM_PROVIDING,
     ],
     badges: [{ label: "Oficial", textColor: "#ffffff", backgroundColor: "#00d564" }],
-    developers: [{ name: "Felii", github: "https://github.com/FeliiCL" }],
+    developers: [{ name: "Felii", github: "https://github.com/feliivk" }],
 } satisfies ExtensionInfo;

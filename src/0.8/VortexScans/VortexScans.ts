@@ -29,7 +29,7 @@ export const VortexScansInfo: SourceInfo = {
     name: 'VortexScans',
     icon: 'icon.png',
     author: 'Felii',
-    authorWebsite: 'https://github.com/FeliiCL',
+    authorWebsite: 'https://github.com/feliivk',
     description: 'Extension for VortexScans (vortexscans.org)',
     contentRating: ContentRating.MATURE,
     websiteBaseURL: WEB_URL,

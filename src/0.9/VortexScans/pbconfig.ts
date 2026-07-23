@@ -14,5 +14,5 @@ export default {
         SourceIntents.SETTINGS_FORM_PROVIDING,
     ],
     badges: [{ label: "Webtoon", textColor: "#ffffff", backgroundColor: "#e11d48" }],
-    developers: [{ name: "Felii", github: "https://github.com/FeliiCL" }],
+    developers: [{ name: "Felii", github: "https://github.com/feliivk" }],
 } satisfies ExtensionInfo;

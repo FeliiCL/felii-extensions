@@ -33,7 +33,7 @@ export const ZonaTMOInfo: SourceInfo = {
     name: 'ZonaTMO',
     icon: 'icon.png',
     author: 'Felii',
-    authorWebsite: 'https://github.com/FeliiCL',
+    authorWebsite: 'https://github.com/feliivk',
     description: 'Lectura desde ZonaTMO (zonatmo.org)',
     contentRating: ContentRating.MATURE,
     websiteBaseURL: WEB_URL,

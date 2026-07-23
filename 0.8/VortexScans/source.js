@@ -21590,7 +21590,7 @@ exports.VortexScansInfo = {
     name: 'VortexScans',
     icon: 'icon.png',
     author: 'Felii',
-    authorWebsite: 'https://github.com/FeliiCL',
+    authorWebsite: 'https://github.com/feliivk',
     description: 'Extension for VortexScans (vortexscans.org)',
     contentRating: types_1.ContentRating.MATURE,
     websiteBaseURL: WEB_URL,

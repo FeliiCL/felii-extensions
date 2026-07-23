@@ -13,5 +13,5 @@ export default {
         SourceIntents.CHAPTER_PROVIDING,
     ],
     badges: [{ label: "Manhwa", textColor: "#ffffff", backgroundColor: "#7c3aed" }],
-    developers: [{ name: "Felii", github: "https://github.com/FeliiCL" }],
+    developers: [{ name: "Felii", github: "https://github.com/feliivk" }],
 } satisfies ExtensionInfo;
