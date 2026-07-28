@@ -181,6 +181,18 @@ export class HiveToonsExtension implements HiveToonsImplementation {
             .replace(/&amp;/g, "&");
     }
 
+    // postContent es HTML enriquecido (varía por serie: <p> por párrafo, <br><br>,
+    // o un único <p> envolvente); se aplana a texto conservando los saltos.
+    private htmlToText(html: string): string {
+        return html
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p\s*>/gi, "\n\n")
+            .replace(/<\/?[a-z][^>]*>/gi, "")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+    }
+
     // seriesStatus textual → estado string de Paperback 0.9
     private mapStatus(statusText: string): string {
         const s = (statusText || "").toUpperCase();
@@ -238,7 +250,7 @@ export class HiveToonsExtension implements HiveToonsImplementation {
         // Sinopsis: postContent va seguido siempre de "isNovel"
         let synopsis = "";
         const descMatch = data.match(/"postContent":\[0,"([\s\S]*?)"\],"isNovel"/);
-        if (descMatch && descMatch[1]) synopsis = this.decodeEntities(descMatch[1]).trim();
+        if (descMatch && descMatch[1]) synopsis = this.htmlToText(this.decodeEntities(descMatch[1]));
 
         // Portada: primer featuredImage del storage tras "postContent"
         let image = FALLBACK_COVER;

@@ -21591,7 +21591,7 @@ const FALLBACK_COVER = "https://placehold.co/400x600?text=No+Cover";
 const SERIES_CACHE_TTL = 60000; // 1 min
 const SERIES_CACHE_MAX = 30;
 exports.HiveToonsInfo = {
-    version: '1.0.0',
+    version: '1.0.1',
     name: 'HiveToons',
     icon: 'icon.png',
     author: 'Felii',
@@ -21667,6 +21667,17 @@ class HiveToons extends types_1.Source {
             .replace(/&gt;/g, ">")
             .replace(/&amp;/g, "&");
     }
+    // postContent es HTML enriquecido (varía por serie: <p> por párrafo, <br><br>,
+    // o un único <p> envolvente); se aplana a texto conservando los saltos.
+    htmlToText(html) {
+        return html
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p\s*>/gi, "\n\n")
+            .replace(/<\/?[a-z][^>]*>/gi, "")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+    }
     // Mapea el estado textual de la web al enum numérico de Paperback
     mapStatus(statusText) {
         const s = (statusText || "").toUpperCase();
@@ -21704,7 +21715,7 @@ class HiveToons extends types_1.Source {
         let desc = "Sin descripción disponible.";
         const descMatch = data.match(/"postContent":\[0,"([\s\S]*?)"\],"isNovel"/);
         if (descMatch && descMatch[1])
-            desc = this.decodeEntities(descMatch[1]).trim();
+            desc = this.htmlToText(this.decodeEntities(descMatch[1])) || desc;
         // Portada: primer featuredImage del storage tras "postContent"
         let image = FALLBACK_COVER;
         const postIdx = data.indexOf('"postContent"');
