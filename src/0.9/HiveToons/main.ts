@@ -366,7 +366,7 @@ export class HiveToonsExtension implements HiveToonsImplementation {
         const pages: string[] = [];
         $("img[data-reader-page-image]").each((_i, el) => {
             const src = ($(el).attr("src") || $(el).attr("data-src") || "").trim();
-            if (src) pages.push(src);
+            if (src.startsWith("https://")) pages.push(src);
         });
 
         return {

@@ -3,7 +3,7 @@ import { ContentRating, ExtensionInfo, SourceIntents } from "@paperback/types";
 export default {
     name: "MangaOni",
     description: "Lectura desde MangaOni (manga-oni.com)",
-    version: "1.0.0",
+    version: "1.0.1",
     icon: "icon.png",
     language: "es",
     contentRating: ContentRating.MATURE,

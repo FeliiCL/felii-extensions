@@ -3,7 +3,7 @@ import { ContentRating, ExtensionInfo, SourceIntents } from "@paperback/types";
 export default {
     name: "Olympus",
     description: "Lectura desde Olympus Scanlation (olympusxyz.com)",
-    version: "1.0.1",
+    version: "1.0.2",
     icon: "icon.png",
     language: "es",
     contentRating: ContentRating.MATURE,

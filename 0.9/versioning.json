@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-07-28T02:03:21.215Z",
+  "buildTime": "2026-07-30T18:29:20.454Z",
   "builtWith": {
     "toolchain": "1.0.0-alpha.92",
     "types": "1.0.0-alpha.92"
@@ -39,7 +39,7 @@
     {
       "name": "HiveToons",
       "description": "Read webtoons from HiveToons (hivetoons.org)",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "icon": "icon.png",
       "language": "en",
       "contentRating": "MATURE",
@@ -67,7 +67,7 @@
     {
       "name": "MangaOni",
       "description": "Lectura desde MangaOni (manga-oni.com)",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "icon": "icon.png",
       "language": "es",
       "contentRating": "MATURE",
@@ -94,7 +94,7 @@
     {
       "name": "ManhwaWeb",
       "description": "Lectura directa desde ManhwaWeb con API rápida",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "icon": "icon.png",
       "language": "es",
       "contentRating": "MATURE",
@@ -122,7 +122,7 @@
     {
       "name": "Olympus",
       "description": "Lectura desde Olympus Scanlation (olympusxyz.com)",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "icon": "icon.png",
       "language": "es",
       "contentRating": "MATURE",
@@ -149,7 +149,7 @@
     {
       "name": "Topcur Traducciones",
       "description": "Novelas ligeras en español de Topcur (animerikosuper.blogspot.com)",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "icon": "icon.png",
       "language": "es",
       "contentRating": "MATURE",
@@ -181,7 +181,7 @@
     {
       "name": "VortexScans",
       "description": "Read webtoons from VortexScans (vortexscans.org)",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "icon": "icon.png",
       "language": "en",
       "contentRating": "MATURE",
@@ -209,7 +209,7 @@
     {
       "name": "Webtoons",
       "description": "Webtoons oficial (webtoons.com) — ES/EN configurable en ajustes",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "icon": "icon.png",
       "language": "multi",
       "contentRating": "MATURE",
@@ -237,7 +237,7 @@
     {
       "name": "ZonaTMO",
       "description": "Lectura desde ZonaTMO (zonatmo.org)",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "icon": "icon.png",
       "language": "es",
       "contentRating": "MATURE",

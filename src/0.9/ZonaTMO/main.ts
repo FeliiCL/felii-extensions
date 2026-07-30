@@ -276,13 +276,13 @@ export class ZonaTMOExtension implements ZonaTMOImplementation {
         const pages: string[] = [];
         $("img.reader-image").each((_i, el) => {
             const src = ($(el).attr("data-src") || $(el).attr("src") || "").trim();
-            if (src) pages.push(src);
+            if (src.startsWith("https://")) pages.push(src);
         });
         // Fallback: contenedores del lector
         if (pages.length === 0) {
             $("div.reader-img-wrap img").each((_i, el) => {
                 const src = ($(el).attr("data-src") || $(el).attr("src") || "").trim();
-                if (src) pages.push(src);
+                if (src.startsWith("https://")) pages.push(src);
             });
         }
 

@@ -319,7 +319,7 @@ export class VortexScansExtension implements VortexScansImplementation {
         const pages: string[] = [];
         $("img[data-reader-page-image]").each((_i, el) => {
             const src = ($(el).attr("src") || $(el).attr("data-src") || "").trim();
-            if (src) pages.push(src);
+            if (src.startsWith("https://")) pages.push(src);
         });
 
         return { id: chapter.chapterId, mangaId: chapter.sourceManga.mangaId, pages };

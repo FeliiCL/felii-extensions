@@ -202,8 +202,11 @@ export class OlympusExtension implements OlympusImplementation {
             `${API_URL}/capitulo/${chapter.sourceManga.mangaId}/${chapter.chapterId}`,
         );
         const raw: string[] = json?.chapter?.pages ?? json?.data?.chapter?.pages ?? [];
-        // Los nombres de archivo traen espacios y acentos → encodeURI
-        const pages = raw.map((p) => encodeURI(p));
+        // Los nombres de archivo traen espacios y acentos → encodeURI;
+        // solo se aceptan URLs https tal cual las sirve la API
+        const pages = raw
+            .filter((p) => typeof p === "string" && p.startsWith("https://"))
+            .map((p) => encodeURI(p));
 
         return { id: chapter.chapterId, mangaId: chapter.sourceManga.mangaId, pages };
     }

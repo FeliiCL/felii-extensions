@@ -3,7 +3,7 @@ import { ContentRating, ExtensionInfo, SourceIntents } from "@paperback/types";
 export default {
     name: "ZonaTMO",
     description: "Lectura desde ZonaTMO (zonatmo.org)",
-    version: "1.0.1",
+    version: "1.0.2",
     icon: "icon.png",
     language: "es",
     contentRating: ContentRating.MATURE,

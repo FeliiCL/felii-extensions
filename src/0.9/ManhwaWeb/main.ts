@@ -325,7 +325,9 @@ export class ManhwaWebExtension implements ManhwaWebImplementation {
         const data = await this.fetchJson<{ chapter?: { img?: string[] } }>(
             `${API_URL}/chapters/see/${chapter.chapterId}`,
         );
-        const pages = Array.isArray(data.chapter?.img) ? data.chapter!.img! : [];
+        const raw = Array.isArray(data.chapter?.img) ? data.chapter!.img! : [];
+        // Solo URLs https: descarta cualquier esquema raro que traiga la API
+        const pages = raw.filter((p) => typeof p === "string" && p.startsWith("https://"));
 
         return { id: chapter.chapterId, mangaId: chapter.sourceManga.mangaId, pages };
     }

@@ -3,7 +3,7 @@ import { ContentRating, ExtensionInfo, SourceIntents } from "@paperback/types";
 export default {
     name: "Topcur Traducciones",
     description: "Novelas ligeras en español de Topcur (animerikosuper.blogspot.com)",
-    version: "1.0.3",
+    version: "1.0.4",
     icon: "icon.png",
     language: "es",
     contentRating: ContentRating.MATURE,

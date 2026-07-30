@@ -232,7 +232,7 @@ export class WebtoonsExtension implements WebtoonsImplementation {
         const pages: string[] = [];
         $("img._images").each((_i, el) => {
             const src = ($(el).attr("data-url") || $(el).attr("src") || "").trim();
-            if (src) pages.push(src);
+            if (src.startsWith("https://")) pages.push(src);
         });
 
         return { id: chapter.chapterId, mangaId: chapter.sourceManga.mangaId, pages };

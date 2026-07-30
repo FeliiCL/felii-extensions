@@ -162,7 +162,8 @@ export class MangaOniExtension implements MangaOniImplementation {
             const title = img.attr("alt")?.trim() || card.find("span").first().text().trim();
             // Portada: data-src (lazyload lozad) tiene prioridad sobre src (default.gif)
             let image = img.attr("data-src") || img.attr("src") || FALLBACK_COVER;
-            if (image.includes("default.gif")) image = FALLBACK_COVER;
+            if (image.startsWith("//")) image = "https:" + image;
+            if (image.includes("default.gif") || !image.startsWith("https://")) image = FALLBACK_COVER;
 
             if (!title) return;
             seen.add(mangaId);
@@ -183,10 +184,12 @@ export class MangaOniExtension implements MangaOniImplementation {
 
         const title = $("h1.post-title").first().text().trim() || mangaId;
 
-        const image =
+        let image =
             $("a.portada img").first().attr("src") ||
             $('meta[property="og:image"]').attr("content") ||
             FALLBACK_COVER;
+        if (image.startsWith("//")) image = "https:" + image;
+        if (!image.startsWith("https://")) image = FALLBACK_COVER;
 
         // Sinopsis: #sinopsis trae un <h3>Sinopsis</h3> por delante
         const sinopsisEl = $("#sinopsis");
@@ -290,9 +293,12 @@ export class MangaOniExtension implements MangaOniImplementation {
         if (!encoded) throw new Error(`No se encontró el contenido del capítulo ${chapter.chapterId}`);
 
         const parts = this.decodeBase64(encoded).split("||");
-        const dir = parts[0];
         const listRaw = parts[1];
-        if (!dir || !listRaw) throw new Error(`Contenido del capítulo ${chapter.chapterId} con formato inesperado`);
+        // El prefijo del CDN llega en un blob del sitio: se exige https
+        // (con upgrade de las rutas protocol-relative "//host/...")
+        let dir = parts[0] ?? "";
+        if (dir.startsWith("//")) dir = "https:" + dir;
+        if (!dir.startsWith("https://") || !listRaw) throw new Error(`Contenido del capítulo ${chapter.chapterId} con formato inesperado`);
 
         let names: unknown;
         try {

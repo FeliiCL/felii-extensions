@@ -176,8 +176,10 @@ export class TopcurExtension implements TopcurImplementation {
     // Blogger sirve las imágenes con el tamaño incrustado en la ruta (/s72-c/,
     // /w320-h480/) o como sufijo (=s220); las miniaturas del feed llegan a 72 px.
     private resizeImage(url: string | undefined, size = 400): string {
-        if (!url) return FALLBACK_COVER;
-        return url
+        let normalized = (url ?? "").trim();
+        if (normalized.startsWith("//")) normalized = "https:" + normalized;
+        if (!normalized.startsWith("https://")) return FALLBACK_COVER;
+        return normalized
             .replace(/\/s\d+(?:-c)?\//, `/s${size}/`)
             .replace(/\/w\d+-h\d+(?:-[a-z-]+)?\//, `/s${size}/`)
             .replace(/=s\d+(?:-c)?$/, `=s${size}`);
@@ -530,8 +532,11 @@ export class TopcurExtension implements TopcurImplementation {
             const tag = (element as { tagName?: string }).tagName?.toLowerCase() ?? "";
 
             if (tag === "img") {
-                const src = node.attr("src");
-                if (!src) {
+                // Solo imágenes https (con upgrade de las rutas protocol-relative
+                // del propio Blogger); data:, http: y demás esquemas se descartan.
+                let src = (node.attr("src") ?? "").trim();
+                if (src.startsWith("//")) src = "https:" + src;
+                if (!src.startsWith("https://")) {
                     node.remove();
                     return;
                 }

@@ -3,7 +3,7 @@ import { ContentRating, ExtensionInfo, SourceIntents } from "@paperback/types";
 export default {
     name: "Webtoons",
     description: "Webtoons oficial (webtoons.com) — ES/EN configurable en ajustes",
-    version: "1.0.1",
+    version: "1.0.2",
     icon: "icon.png",
     language: "multi",
     contentRating: ContentRating.MATURE,
