@@ -32,11 +32,24 @@ import * as cheerio from "cheerio";
 // URLs base
 const WEB_URL = "https://vortexscans.org";
 const API_URL = "https://api.vortexscans.org";
-const STORAGE_HOST = "storage.vortexscans.org";
 const FALLBACK_COVER = "https://placehold.co/400x600.png?text=No+Cover";
 
-const SERIES_CACHE_TTL = 60_000;
-const SERIES_CACHE_MAX = 30;
+// Caché del HTML de /series/{slug} y del home (varias llamadas seguidas lo reutilizan)
+const PAGE_CACHE_TTL = 60_000;
+const PAGE_CACHE_MAX = 30;
+
+// Secciones del home: clave del estado embebido → sección de discover.
+// `todayPosts` viene envuelto en {data:{posts:[...]}}, el resto son arrays.
+const HOME_SECTIONS: { key: string; title: string; type: DiscoverSectionType }[] = [
+    { key: "combinedSliderPosts", title: "Featured", type: DiscoverSectionType.featured },
+    { key: "todayPosts", title: "Popular Today", type: DiscoverSectionType.prominentCarousel },
+    { key: "latestMangaPosts", title: "Latest Releases", type: DiscoverSectionType.simpleCarousel },
+    { key: "weeklyPosts", title: "Popular This Week", type: DiscoverSectionType.simpleCarousel },
+    { key: "monthlyPosts", title: "Popular This Month", type: DiscoverSectionType.simpleCarousel },
+];
+// Otras claves del estado que delimitan el final de una sección
+// (firstHeroImageSrc va justo después del slider, que es la última).
+const HOME_OTHER_KEYS = ["latestNovelPosts", "publishedCollections", "firstHeroImageSrc"];
 
 // --- NSFW (+18) setting ---
 // Series are flagged via genres (Adult / Mature / Ecchi...). Defaults to the
@@ -113,6 +126,19 @@ type VortexScansImplementation = Extension &
     DiscoverSectionProviding &
     SettingsFormProviding;
 
+// Capítulo tal como lo devuelve /api/chapters?postId=N
+type ApiChapter = {
+    id?: number;
+    slug?: string;
+    number?: number | string;
+    title?: string | null;
+    createdAt?: string;
+    isLocked?: boolean;
+    isAccessible?: boolean;
+};
+
+type HomeTile = { mangaId: string; title: string; imageUrl: string; isAdult: boolean };
+
 export class VortexScansExtension implements VortexScansImplementation {
     requestManager = new VortexScansInterceptor("main");
     globalRateLimiter = new BasicRateLimiter("rateLimiter", {
@@ -121,7 +147,7 @@ export class VortexScansExtension implements VortexScansImplementation {
         ignoreImages: true,
     });
 
-    private seriesCache = new Map<string, { data: string; expiry: number }>();
+    private pageCache = new Map<string, { data: string; expiry: number }>();
 
     async initialise(): Promise<void> {
         this.requestManager.registerInterceptor();
@@ -143,31 +169,100 @@ export class VortexScansExtension implements VortexScansImplementation {
         return JSON.parse(await this.fetchText(url)) as T;
     }
 
-    private async getSeriesHTML(mangaId: string): Promise<string> {
+    // HTML de una página con el estado embebido ya normalizado (ver stripRefs).
+    private async getPageState(path: string): Promise<string> {
         const now = Date.now();
-        const cached = this.seriesCache.get(mangaId);
+        const cached = this.pageCache.get(path);
         if (cached && cached.expiry > now) return cached.data;
 
-        const data = await this.fetchText(`${WEB_URL}/series/${mangaId}`);
-        if (this.seriesCache.size >= SERIES_CACHE_MAX) this.seriesCache.clear();
-        this.seriesCache.set(mangaId, { data, expiry: now + SERIES_CACHE_TTL });
+        const data = this.stripRefs(await this.fetchText(`${WEB_URL}${path}`));
+        if (this.pageCache.size >= PAGE_CACHE_MAX) this.pageCache.clear();
+        this.pageCache.set(path, { data, expiry: now + PAGE_CACHE_TTL });
         return data;
+    }
+
+    private getSeriesHTML(mangaId: string): Promise<string> {
+        return this.getPageState(`/series/${mangaId}`);
     }
 
     // ---- utils ----
 
+    // El sitio embebe su estado como un objeto JS serializado con Seroval:
+    // claves sin comillas, `!0`/`!1` como booleanos y una asignación de
+    // referencia `$R[n]=` delante de cada objeto/array. Quitándolas queda un
+    // literal plano donde `key:"valor"` y `key:[...]` se extraen con regex.
+    private stripRefs(html: string): string {
+        return html.replace(/\$R\[\d+\]=/g, "");
+    }
+
+    // Cadenas del estado: escapes JS (Seroval emite `<` como \x3C) y, después,
+    // entidades HTML que vengan del propio contenido.
+    private decodeString(text: string): string {
+        const unescaped = (text || "").replace(
+            /\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g,
+            (_m, esc: string) => {
+                if (esc[0] === "u") return String.fromCodePoint(parseInt(esc.replace(/[u{}]/g, ""), 16));
+                if (esc[0] === "x") return String.fromCharCode(parseInt(esc.slice(1), 16));
+                if (esc === "n") return "\n";
+                if (esc === "r") return "";
+                if (esc === "t") return " ";
+                return esc;
+            },
+        );
+        return this.decodeEntities(unescaped);
+    }
+
     private decodeEntities(text: string): string {
         return (text || "")
-            .replace(/\\"/g, '"')
+            .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCodePoint(parseInt(h, 16)))
+            .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(parseInt(d, 10)))
             .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&#x27;/g, "'")
             .replace(/&apos;/g, "'")
-            .replace(/&#x2F;/g, "/")
             .replace(/&nbsp;/g, " ")
             .replace(/&lt;/g, "<")
             .replace(/&gt;/g, ">")
             .replace(/&amp;/g, "&");
+    }
+
+    // postContent es HTML enriquecido (<p>, <br>, <strong>...); se aplana a
+    // texto conservando los saltos de párrafo.
+    private htmlToText(html: string): string {
+        return html
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p\s*>/gi, "\n\n")
+            .replace(/<\/?[a-z][^>]*>/gi, "")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+    }
+
+    // Primer `key:"valor"` dentro de un bloque del estado (ya sin $R[n]=).
+    private strField(block: string, key: string): string | undefined {
+        const m = new RegExp(`[{,]${key}:"((?:\\\\.|[^"\\\\])*)"`).exec(block);
+        return m ? this.decodeString(m[1] ?? "") : undefined;
+    }
+
+    private numField(block: string, key: string): number | undefined {
+        const m = new RegExp(`[{,]${key}:(-?[\\d.]+)`).exec(block);
+        const n = m ? parseFloat(m[1] ?? "") : NaN;
+        return Number.isFinite(n) ? n : undefined;
+    }
+
+    // Nombres del primer `genres:[{id:N,name:"..."},...]` del bloque.
+    private genreNames(block: string): string[] {
+        const start = block.indexOf("genres:[");
+        if (start === -1) return [];
+        const end = block.indexOf("]", start);
+        const list = block.slice(start, end === -1 ? start + 3000 : end);
+        const names: string[] = [];
+        const re = /name:"((?:\\.|[^"\\])*)"/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(list)) !== null) {
+            const label = this.decodeString(m[1] ?? "").trim();
+            if (label) names.push(label);
+            if (names.length >= 25) break;
+        }
+        return names;
     }
 
     private mapStatus(statusText: string): string {
@@ -187,6 +282,33 @@ export class VortexScansExtension implements VortexScansImplementation {
             if (enc !== c) return enc;
             return "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0");
         });
+    }
+
+    private slugFromId(mangaId: string): string {
+        try {
+            return decodeURIComponent(mangaId);
+        } catch {
+            return mangaId;
+        }
+    }
+
+    private escapeRegExp(s: string): string {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    // Bloque `post:{id:N,slug:"<slug>",...}` de la serie dentro del estado.
+    // Devuelve el id numérico del post (necesario para /api/chapters) y el bloque.
+    private findSeriesPost(data: string, mangaId: string): { id?: number; block: string } {
+        const slug = this.escapeRegExp(this.slugFromId(mangaId));
+        let m = new RegExp(`post:\\{id:(\\d+),slug:"${slug}"`, "i").exec(data);
+        if (!m) m = /post:\{id:(\d+),slug:"/.exec(data);
+        if (!m) return { block: "" };
+
+        const start = m.index;
+        // El objeto de la serie termina donde empieza la lista inicial de capítulos.
+        let end = data.indexOf(",initialChapters:", start);
+        if (end === -1 || end - start > 60_000) end = Math.min(data.length, start + 60_000);
+        return { id: parseInt(m[1] ?? "", 10) || undefined, block: data.slice(start, end) };
     }
 
     private postIsAdult(post: any): boolean {
@@ -211,48 +333,40 @@ export class VortexScansExtension implements VortexScansImplementation {
     // ---- manga details ----
 
     async getMangaDetails(mangaId: string): Promise<SourceManga> {
-        const response = await this.fetchText(`${WEB_URL}/series/${mangaId}`);
-        const $ = cheerio.load(response);
+        const data = await this.getSeriesHTML(mangaId);
+        const $ = cheerio.load(data);
+        const { block } = this.findSeriesPost(data, mangaId);
 
-        const title = $('meta[property="og:title"]').attr("content")?.trim() || mangaId;
-        let synopsis = ($('meta[property="og:description"]').attr("content") || "").replace(/<[^>]+>/g, "").trim();
-        if (!synopsis) synopsis = "Sin descripción disponible.";
+        const title =
+            this.strField(block, "postTitle")?.trim() ||
+            $('meta[property="og:title"]').attr("content")?.trim() ||
+            mangaId;
 
-        // Datos serializados (Astro): desescapamos comillas para extraer con regex.
-        const data = response.replace(/&quot;/g, '"');
+        const secondaryTitles = (this.strField(block, "alternativeTitles") || "")
+            .split(/[,|;]/)
+            .map((t) => t.trim())
+            .filter((t) => t && t !== title);
 
-        // Portada: primer featuredImage del storage tras "postContent" (ruta /upload/series/featured/...)
-        let image = "";
-        const postIdx = data.indexOf('"postContent"');
-        const searchArea = postIdx !== -1 ? data.slice(postIdx) : data;
-        const coverMatch = searchArea.match(
-            new RegExp(`"featuredImage":\\[0,"(https://${STORAGE_HOST.replace(/\./g, "\\.")}/upload/[^"]+?\\.(?:webp|png|jpg|jpeg|gif))"\\]`),
-        );
-        const coverUrl = coverMatch?.[1];
-        if (coverUrl) image = coverUrl;
-        if (!image) image = $('meta[property="og:image"]').attr("content") || FALLBACK_COVER;
+        let synopsis = this.htmlToText(this.strField(block, "postContent") || "");
+        if (!synopsis) synopsis = this.htmlToText(this.decodeEntities($('meta[property="og:description"]').attr("content") || ""));
+        if (!synopsis) synopsis = "No description available.";
 
-        const statusMatch = data.match(/"seriesStatus":\[0,"([^"]+)"\]/);
-        const status = this.mapStatus(statusMatch?.[1] ?? "");
+        let image = this.strField(block, "featuredImage") || "";
+        if (!image.startsWith("https://")) image = $('meta[property="og:image"]').attr("content") || FALLBACK_COVER;
 
-        const artistMatch = data.match(/"artist":\[0,"([^"]+)"\]/);
-        const artist = artistMatch?.[1];
-        const author = artist ? this.decodeEntities(artist) : undefined;
+        const status = this.mapStatus(this.strField(block, "seriesStatus") || "");
+        const author = this.strField(block, "author")?.trim() || undefined;
+        const artist = this.strField(block, "artist")?.trim() || undefined;
 
-        const tags: Tag[] = [];
-        const genresIdx = data.indexOf('"genres":[1,[');
-        if (genresIdx !== -1) {
-            const genresBlock = data.slice(genresIdx, genresIdx + 2000);
-            const nameRe = /"name":\[0,"([^"]+)"\]/g;
-            let m: RegExpExecArray | null;
-            while ((m = nameRe.exec(genresBlock)) !== null) {
-                const label = this.decodeEntities(m[1] ?? "").trim();
-                if (label) tags.push({ id: label.toLowerCase().replace(/\s+/g, "-"), title: label });
-                if (tags.length >= 20) break;
-            }
-        }
-        const typeMatch = data.match(/"seriesType":\[0,"([^"]+)"\]/);
-        if (typeMatch && typeMatch[1]) tags.push({ id: typeMatch[1].toLowerCase(), title: typeMatch[1] });
+        const avg = this.numField(block, "averageRating");
+        const rating = avg !== undefined ? avg / 2 : undefined;
+
+        const tags: Tag[] = this.genreNames(block).map((label) => ({
+            id: label.toLowerCase().replace(/\s+/g, "-"),
+            title: label,
+        }));
+        const seriesType = this.strField(block, "seriesType");
+        if (seriesType) tags.push({ id: seriesType.toLowerCase(), title: seriesType });
 
         const tagGroups: TagSection[] = [];
         if (tags.length > 0) tagGroups.push({ id: "genres", title: "Géneros", tags });
@@ -263,12 +377,14 @@ export class VortexScansExtension implements VortexScansImplementation {
             mangaId,
             mangaInfo: {
                 primaryTitle: title,
-                secondaryTitles: [],
+                secondaryTitles,
                 thumbnailUrl: image,
                 synopsis,
                 contentRating: isAdult ? ContentRating.ADULT : ContentRating.MATURE,
                 status,
                 author,
+                artist,
+                rating,
                 tagGroups,
                 shareUrl: `${WEB_URL}/series/${mangaId}`,
             },
@@ -277,35 +393,82 @@ export class VortexScansExtension implements VortexScansImplementation {
 
     // ---- chapters ----
 
+    // Lista completa vía /api/chapters?postId=N. Por defecto devuelve todos los
+    // capítulos; si alguna vez viniera recortada se sigue paginando con `skip`.
+    private async fetchApiChapters(postId: number): Promise<ApiChapter[]> {
+        const all: ApiChapter[] = [];
+        for (let i = 0; i < 20; i++) {
+            const skip = all.length > 0 ? `&skip=${all.length}` : "";
+            const json = await this.fetchJson<{ post?: { chapters?: ApiChapter[] }; totalChapterCount?: number }>(
+                `${API_URL}/api/chapters?postId=${postId}${skip}`,
+            );
+            const batch = json?.post?.chapters ?? [];
+            if (batch.length === 0) break;
+            all.push(...batch);
+            const total = json?.totalChapterCount ?? 0;
+            if (!total || all.length >= total) break;
+        }
+        return all;
+    }
+
+    // Capítulos embebidos en la página (sin fechas): {number:N,slug:"chapter-..."}
+    // y los objetos completos de initialChapters ({id:N,slug:"chapter-...",number:N}).
+    private parsePageChapters(data: string): { slug: string; number: number }[] {
+        const out: { slug: string; number: number }[] = [];
+        const re = /\{(?:number:([\d.]+),slug:"(chapter-[A-Za-z0-9_.-]+)"|id:\d+,slug:"(chapter-[A-Za-z0-9_.-]+)",number:([\d.]+))/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(data)) !== null) {
+            const slug = m[2] ?? m[3] ?? "";
+            const number = parseFloat(m[1] ?? m[4] ?? "");
+            if (slug) out.push({ slug, number: Number.isFinite(number) ? number : 0 });
+        }
+        return out;
+    }
+
     async getChapters(sourceManga: SourceManga): Promise<Chapter[]> {
-        const data = (await this.getSeriesHTML(sourceManga.mangaId)).replace(/&quot;/g, '"');
+        const data = await this.getSeriesHTML(sourceManga.mangaId);
+        const { id: postId } = this.findSeriesPost(data, sourceManga.mangaId);
 
         const chapters: Chapter[] = [];
         const seen = new Set<string>();
 
-        const chapRe = /"id":\[0,(\d+)\],"number":\[0,([\d.]+)\],"slug":\[0,"(chapter-[A-Za-z0-9_.-]+)"\],"title":\[0,(?:"((?:\\.|[^"\\])*)"|null)\],"createdAt":\[0,"([^"]+)"\]/g;
-        let m: RegExpExecArray | null;
-        while ((m = chapRe.exec(data)) !== null) {
-            // Sin slug no hay chapterId: el capítulo es inservible, se descarta
-            // sin abortar el resto del listado.
-            const slug = m[3];
-            if (!slug) continue;
+        let apiChapters: ApiChapter[] = [];
+        if (postId) {
+            try {
+                apiChapters = await this.fetchApiChapters(postId);
+            } catch {
+                apiChapters = [];
+            }
+        }
 
-            const chapNum = parseFloat(m[2] ?? "") || 0;
-            const rawTitle = this.decodeEntities(m[4] || "").trim();
-            const createdAt = m[5];
-
-            if (seen.has(slug)) continue;
+        for (const ch of apiChapters) {
+            const slug = ch.slug;
+            if (!slug || seen.has(slug)) continue;
+            // Capítulos de pago/bloqueados: el lector solo muestra la pantalla de compra.
+            if (ch.isAccessible === false || ch.isLocked === true) continue;
             seen.add(slug);
-
             chapters.push({
                 chapterId: slug,
                 sourceManga,
-                title: rawTitle || undefined,
-                chapNum,
-                publishDate: createdAt ? new Date(createdAt) : undefined,
+                title: (ch.title || "").trim() || undefined,
+                chapNum: parseFloat(String(ch.number ?? "")) || 0,
+                publishDate: ch.createdAt ? new Date(ch.createdAt) : undefined,
                 langCode: "en",
             });
+        }
+
+        // Sin API (o sin id de post) se cae a lo que haya embebido en la página.
+        if (chapters.length === 0) {
+            for (const ch of this.parsePageChapters(data)) {
+                if (seen.has(ch.slug)) continue;
+                seen.add(ch.slug);
+                chapters.push({
+                    chapterId: ch.slug,
+                    sourceManga,
+                    chapNum: ch.number,
+                    langCode: "en",
+                });
+            }
         }
 
         chapters.sort((a, b) => b.chapNum - a.chapNum);
@@ -347,21 +510,16 @@ export class VortexScansExtension implements VortexScansImplementation {
     // ---- discover ----
 
     async getDiscoverSections(): Promise<DiscoverSection[]> {
-        return [
-            { id: "sliderPosts", title: "Featured", type: DiscoverSectionType.featured },
-            { id: "posts", title: "Popular Today", type: DiscoverSectionType.prominentCarousel },
-            { id: "initalPosts", title: "Latest", type: DiscoverSectionType.simpleCarousel },
-        ];
+        return HOME_SECTIONS.map((s) => ({ id: s.key, title: s.title, type: s.type }));
     }
 
     async getDiscoverSectionItems(
         section: DiscoverSection,
         _metadata: Metadata | undefined,
     ): Promise<PagedResults<DiscoverSectionItem>> {
-        const data = (await this.fetchText(`${WEB_URL}/`)).replace(/&quot;/g, '"');
-        const sectionKeys = ["sliderPosts", "posts", "initalPosts"];
+        const data = await this.getPageState("/");
         const showNsfw = getShowNsfw();
-        const tiles = this.parseHomeSection(data, section.id, sectionKeys).filter((t) => showNsfw || !t.isAdult);
+        const tiles = this.parseHomeSection(data, section.id).filter((t) => showNsfw || !t.isAdult);
 
         const items: DiscoverSectionItem[] = tiles.map((t) => {
             const base = {
@@ -380,56 +538,48 @@ export class VortexScansExtension implements VortexScansImplementation {
         return { items, metadata: undefined };
     }
 
-    private parseHomeSection(
-        data: string,
-        key: string,
-        allKeys: string[],
-    ): { mangaId: string; title: string; imageUrl: string; isAdult: boolean }[] {
-        const start = data.indexOf(`"${key}":[1,[`);
-        if (start === -1) return [];
+    // Posts de una sección del home. Cada uno empieza por
+    // {id:N,slug:"...",postTitle:"...",featuredImage:"...",...,genres:[...]}.
+    private parseHomeSection(data: string, key: string): HomeTile[] {
+        const startMatch = new RegExp(`[{,]${key}:`).exec(data);
+        if (!startMatch) return [];
+        const start = startMatch.index;
 
         let end = data.length;
-        for (const other of allKeys) {
+        for (const other of [...HOME_SECTIONS.map((s) => s.key), ...HOME_OTHER_KEYS]) {
             if (other === key) continue;
-            const oi = data.indexOf(`"${other}":[1,[`);
-            if (oi > start && oi < end) end = oi;
+            const om = new RegExp(`[{,]${other}:`).exec(data.slice(start + 1));
+            if (om && start + 1 + om.index < end) end = start + 1 + om.index;
         }
 
         const seg = data.slice(start, end);
-        const out: { mangaId: string; title: string; imageUrl: string; isAdult: boolean }[] = [];
-        const seen = new Set<string>();
-        const postRe = /"id":\[0,\d+\],"slug":\[0,"([^"]+)"\],"postTitle":\[0,"((?:\\.|[^"\\])*)"\],"featuredImage":\[0,"([^"]*)"\]/g;
-
-        // Primero recogemos los matches con su posición para poder delimitar
-        // el bloque de cada post (los géneros van entre un post y el siguiente).
+        const postRe = /\{id:(\d+),slug:"((?:\\.|[^"\\])*)",postTitle:"((?:\\.|[^"\\])*)"/g;
         const matches: { m: RegExpExecArray; index: number }[] = [];
         let m: RegExpExecArray | null;
         while ((m = postRe.exec(seg)) !== null) matches.push({ m, index: m.index });
 
+        const out: HomeTile[] = [];
+        const seen = new Set<string>();
         for (const [i, entry] of matches.entries()) {
             const cur = entry.m;
-            // Sin slug no hay mangaId: el `if (!slug)` de abajo descarta el post.
-            const slug = this.toSafeId(this.decodeEntities(cur[1] ?? ""));
-            const title = this.decodeEntities(cur[2] ?? "");
-            const image = this.decodeEntities(cur[3] ?? "") || FALLBACK_COVER;
-            if (!slug || seen.has(slug)) continue;
+            const slug = this.toSafeId(this.decodeString(cur[2] ?? ""));
+            const title = this.decodeString(cur[3] ?? "").trim();
+            if (!slug || !title || seen.has(slug)) continue;
+
+            // Bloque del post: hasta el siguiente post (los géneros van dentro).
+            const block = seg.slice(entry.index, matches[i + 1]?.index ?? seg.length);
+            // Las novelas no se pueden leer con este lector de imágenes.
+            if (/[{,]isNovel:!0/.test(block)) continue;
             seen.add(slug);
 
-            // Bloque del post actual: desde este match hasta el siguiente (o el fin)
-            const blockEnd = matches[i + 1]?.index ?? seg.length;
-            const block = seg.slice(entry.index, blockEnd);
-            let isAdult = false;
-            const genresIdx = block.indexOf('"genres":[1,[');
-            if (genresIdx !== -1) {
-                const genresBlock = block.slice(genresIdx, genresIdx + 1500);
-                const nameRe = /"name":\[0,"([^"]+)"\]/g;
-                let gm: RegExpExecArray | null;
-                while ((gm = nameRe.exec(genresBlock)) !== null) {
-                    if (ADULT_GENRE_RE.test(gm[1] ?? "")) { isAdult = true; break; }
-                }
-            }
-
-            out.push({ mangaId: slug, title, imageUrl: image, isAdult });
+            const image = this.strField(block, "featuredImage") || "";
+            const isAdult = this.genreNames(block).some((g) => ADULT_GENRE_RE.test(g));
+            out.push({
+                mangaId: slug,
+                title,
+                imageUrl: image.startsWith("https://") ? image : FALLBACK_COVER,
+                isAdult,
+            });
         }
         return out;
     }

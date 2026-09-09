@@ -3,7 +3,7 @@ import { ContentRating, ExtensionInfo, SourceIntents } from "@paperback/types";
 export default {
     name: "VortexScans",
     description: "Read webtoons from VortexScans (vortexscans.org)",
-    version: "1.1.2",
+    version: "1.2.0",
     icon: "icon.png",
     language: "en",
     contentRating: ContentRating.MATURE,
